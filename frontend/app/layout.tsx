@@ -1,0 +1,26 @@
+import { Analytics } from '@vercel/analytics/next'
+import type { Metadata, Viewport } from 'next'
+import './globals.css'
+
+export const metadata: Metadata = {
+  title: 'Kavach | Disaster Decision Support',
+  description: 'Government disaster decision support and hazard monitoring portal.',
+  generator: 'Kavach Portal',
+}
+
+export const viewport: Viewport = {
+  colorScheme: 'light',
+  themeColor: '#f4f7fa',
+  userScalable: true,
+}
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="en" className="bg-background">
+      <body className="antialiased">
+        {children}
+        {process.env.NODE_ENV === 'production' && <Analytics />}
+      </body>
+    </html>
+  )
+}

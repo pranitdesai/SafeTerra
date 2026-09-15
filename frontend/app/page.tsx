@@ -266,10 +266,19 @@ function Hazards({ settlements, sites, userDistrictName }: { settlements: Settle
   )
 }
 
-function DataPage({ page, districts, sites, users, userDistrictName }: { page: Exclude<Page, 'Dashboard' | 'Hazard Red Zones'>, districts: District[], sites: RelocationSite[], users: User[], userDistrictName?: string | null }) {
+function DataPage({ page, districts, sites, users, userDistrictName, settlements }: { page: Exclude<Page, 'Dashboard' | 'Hazard Red Zones'>, districts: District[], sites: RelocationSite[], users: User[], userDistrictName?: string | null, settlements: Settlement[] }) {
   const [q, setQ] = useState('')
   const type = page === 'Administrative Units' ? 'districts' : page === 'Relocation Strategy' ? 'sites' : 'users'
   
+  const hazardPoints: MapPoint[] = settlements.map(s => ({
+    id: `s-${s.id}`,
+    name: s.name,
+    position: [s.latitude || 30.3165, s.longitude || 78.0322],
+    kind: 'hazard',
+    risk: s.risk_score,
+    status: s.current_hazard_status
+  }))
+
   const relocationPoints: MapPoint[] = sites.map(s => ({
     id: `rs-${s.id}`,
     name: s.name,
@@ -290,7 +299,7 @@ function DataPage({ page, districts, sites, users, userDistrictName }: { page: E
         {type === 'sites' && (
           <div className="relocation-map-wrap">
             <div className="panel-header"><div><h2>Reallocation routes</h2><p>Recommended paths from hazard sites to available safe locations</p></div></div>
-            <KavachMap points={relocationPoints} routes={[]} showRoutes userDistrictName={userDistrictName} />
+            <KavachMap points={[...hazardPoints, ...relocationPoints]} routes={[]} showRoutes userDistrictName={userDistrictName} />
           </div>
         )}
         <div className="panel-header">
@@ -399,10 +408,12 @@ export default function Home() {
           setUsers(uData || [])
         }
       } catch (err: any) {
-        console.error("Failed to load dashboard data:", err)
         if (err.status === 401 || err.status === 403) {
+          console.warn("Session expired. Redirecting to login.")
           removeAuthToken()
           router.push('/login')
+        } else {
+          console.error("Failed to load dashboard data:", err)
         }
       } finally {
         setLoading(false)
@@ -425,7 +436,7 @@ export default function Home() {
       <main className="main-content">
         {page === 'Dashboard' ? <Dashboard go={setPage} user={user} settlements={settlements} sites={sites} /> 
           : page === 'Hazard Red Zones' ? <Hazards settlements={settlements} sites={sites} userDistrictName={user?.assigned_district_name} /> 
-          : <DataPage page={page} districts={districts} sites={sites} users={users} userDistrictName={user?.assigned_district_name} />}
+          : <DataPage page={page} districts={districts} sites={sites} users={users} userDistrictName={user?.assigned_district_name} settlements={settlements} />}
       </main>
     </div>
   )

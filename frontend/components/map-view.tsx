@@ -18,8 +18,51 @@ export type Route = {
   positions: [number, number][]
 }
 
-const MapCanvas = dynamic(() => import('./map-view-client').then(module => module.MapCanvas), { ssr: false })
+const MapCanvas = dynamic(() => import('./map-view-client').then(module => module.MapCanvas), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: '100%', height: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: '#94a3b8', gap: '12px' }}>
+      <div style={{ width: '28px', height: '28px', border: '3px solid #38bdf8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div style={{ fontSize: '13px', fontWeight: '600' }}>Initializing GIS Satellite Map & Evacuation Corridors...</div>
+    </div>
+  )
+})
 
-export function KavachMap({ points, routes = [], showRoutes = false, userDistrictName }: { points: MapPoint[]; routes?: Route[]; showRoutes?: boolean, userDistrictName?: string | null }) {
-  return <div className="real-map-shell"><MapCanvas points={points} routes={routes} showRoutes={showRoutes} userDistrictName={userDistrictName} /><div className="real-map-key" aria-label="Map legend"><span><i className="key-dot key-hazard" />Hazard zone</span><span><i className="key-dot key-site" />Relocation site</span>{showRoutes && <span><i className="key-line" />Evacuation route</span>}</div></div>
+export function KavachMap({
+  points,
+  routes = [],
+  showRoutes = false,
+  userDistrictName
+}: {
+  points: MapPoint[];
+  routes?: Route[];
+  showRoutes?: boolean;
+  userDistrictName?: string | null;
+}) {
+  return (
+    <div
+      className="real-map-shell"
+      style={{
+        width: '100%',
+        height: '520px',
+        minHeight: '520px',
+        position: 'relative',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.08)'
+      }}
+    >
+      <MapCanvas
+        points={points}
+        routes={routes}
+        showRoutes={showRoutes}
+        userDistrictName={userDistrictName}
+      />
+      <div className="real-map-key" aria-label="Map legend">
+        <span><i className="key-dot key-hazard" />Hazard zone</span>
+        <span><i className="key-dot key-site" />Relocation site</span>
+        {showRoutes && <span><i className="key-line" />Evacuation corridor</span>}
+      </div>
+    </div>
+  )
 }

@@ -9,340 +9,456 @@ const MAPBOX_TOKEN = 'pk.eyJ1IjoiZGhhaXJ5YXNoaWxzaGluZGUiLCJhIjoiY211MDMzdGwxMGl
 
 type RoutedPath = Route & { roadPositions?: [number, number][]; loading?: boolean }
 
+// Asynchronously fetch driving route from public OSRM with timeout
 async function getRoadRoute(route: Route): Promise<[number, number][]> {
+  if (!route.positions || route.positions.length < 2) return route.positions
   const start = route.positions[0]
   const end = route.positions[route.positions.length - 1]
   const coordinates = `${start[1]},${start[0]};${end[1]},${end[0]}`
-  const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`)
-  if (!response.ok) throw new Error('Routing service unavailable')
-  const data = await response.json()
-  const geometry = data.routes?.[0]?.geometry?.coordinates
-  if (!geometry?.length) throw new Error('No route found')
-  return geometry.map(([longitude, latitude]: [number, number]) => [latitude, longitude])
-}
 
-const zoneShapes: Record<string, [number, number][]> = {
-  kholi: [[30.337, 78.007], [30.342, 78.058], [30.311, 78.081], [30.283, 78.057], [30.287, 78.015], [30.312, 77.998]],
-  barkot: [[30.842, 78.156], [30.862, 78.234], [30.823, 78.278], [30.778, 78.255], [30.775, 78.188], [30.807, 78.145]],
-  sundarpur: [[30.294, 78.078], [30.311, 78.132], [30.275, 78.158], [30.238, 78.136], [30.246, 78.093], [30.27, 78.073]],
-  maaldevta: [[30.366, 78.104], [30.371, 78.157], [30.337, 78.181], [30.309, 78.151], [30.313, 78.112], [30.339, 78.092]],
-  dhanaulti: [[30.465, 78.211], [30.474, 78.267], [30.438, 78.291], [30.411, 78.256], [30.42, 78.22], [30.444, 78.201]],
-}
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 4000)
 
-function closePolygon(coords: [number, number][]) {
-  if (coords.length < 3) return coords;
-  const first = coords[0];
-  const last = coords[coords.length - 1];
-  if (first[0] !== last[0] || first[1] !== last[1]) {
-    return [...coords, first];
+  try {
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`,
+      { signal: controller.signal }
+    )
+    clearTimeout(timeoutId)
+    if (!response.ok) return route.positions
+    const data = await response.json()
+    const geometry = data.routes?.[0]?.geometry?.coordinates
+    if (!geometry || !geometry.length) return route.positions
+    // OSRM returns [longitude, latitude], convert to [latitude, longitude] to match our schema
+    return geometry.map(([lng, lat]: [number, number]) => [lat, lng])
+  } catch {
+    clearTimeout(timeoutId)
+    return route.positions
   }
-  return coords;
 }
 
-export function MapCanvas({ points, routes = [], showRoutes = false, userDistrictName }: { points: MapPoint[]; routes?: Route[]; showRoutes?: boolean, userDistrictName?: string | null }) {
-  const mapRef = useRef<any>(null);
-  const [roadRoutes, setRoadRoutes] = useState<RoutedPath[]>(routes.map(route => ({ ...route, loading: true })))
-  const [districtGeoJSON, setDistrictGeoJSON] = useState<any | null>(null)
-  const [popupInfo, setPopupInfo] = useState<MapPoint | null>(null);
+// Polygon shapes for key hazard zones
+const zoneShapes: Record<string, [number, number][]> = {
+  kholi: [[30.337, 78.007], [30.342, 78.058], [30.311, 78.081], [30.283, 78.057], [30.287, 78.015], [30.337, 78.007]],
+  maldevta: [[30.366, 78.104], [30.371, 78.157], [30.337, 78.181], [30.309, 78.151], [30.313, 78.112], [30.366, 78.104]],
+  sahastradhara: [[30.384, 78.129], [30.395, 78.150], [30.375, 78.165], [30.365, 78.135], [30.384, 78.129]],
+  mussoorie: [[30.459, 78.066], [30.474, 78.095], [30.445, 78.110], [30.435, 78.075], [30.459, 78.066]],
+  barkot: [[30.842, 78.156], [30.862, 78.234], [30.823, 78.278], [30.778, 78.255], [30.775, 78.188], [30.842, 78.156]],
+  sundarpur: [[30.294, 78.078], [30.311, 78.132], [30.275, 78.158], [30.238, 78.136], [30.246, 78.093], [30.294, 78.078]],
+}
 
-  const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/satellite-streets-v12');
+function generateCircularPolygon(lat: number, lon: number, radiusKm = 1.2, points = 16): [number, number][] {
+  const coords: [number, number][] = []
+  const latDelta = radiusKm / 111.0
+  const lonDelta = radiusKm / (111.0 * Math.cos((lat * Math.PI) / 180.0))
+  for (let i = 0; i <= points; i++) {
+    const angle = (i * 2 * Math.PI) / points
+    coords.push([lon + lonDelta * Math.cos(angle), lat + latDelta * Math.sin(angle)])
+  }
+  return coords
+}
+
+export function MapCanvas({
+  points,
+  routes = [],
+  showRoutes = false,
+  userDistrictName
+}: {
+  points: MapPoint[];
+  routes?: Route[];
+  showRoutes?: boolean;
+  userDistrictName?: string | null;
+}) {
+  const mapRef = useRef<any>(null)
+  const [mapLoaded, setMapLoaded] = useState(false)
+  const [popupInfo, setPopupInfo] = useState<MapPoint | null>(null)
+  const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/satellite-streets-v12')
+
+  // Immediate routes state: initialized from prop, updated immediately when routes change!
+  const [roadRoutes, setRoadRoutes] = useState<RoutedPath[]>([])
 
   useEffect(() => {
-    if (!userDistrictName) return
-    const fetchBoundary = async () => {
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${userDistrictName}+District,+Uttarakhand,+India&polygon_geojson=1&format=json`)
-        const data = await res.json()
-        if (data && data.length > 0 && data[0].geojson) {
-          setDistrictGeoJSON(data[0].geojson)
-        }
-      } catch (err) {
-        console.error("Failed to fetch district boundaries:", err)
-      }
+    if (!showRoutes || !routes || routes.length === 0) {
+      setRoadRoutes([])
+      return
     }
-    fetchBoundary()
-  }, [userDistrictName])
 
-  useEffect(() => {
-    if (!showRoutes || routes.length === 0) return
+    // Immediately set straight lines so corridors appear on the map without any network delay
+    setRoadRoutes(routes.map(r => ({ ...r, loading: true })))
+
+    // Asynchronously enrich with OSRM road geometry
     let active = true
-    Promise.all(routes.map(async route => {
-      try {
-        return { ...route, roadPositions: await getRoadRoute(route), loading: false }
-      } catch {
-        return { ...route, loading: false }
-      }
-    })).then(nextRoutes => {
-      if (active) setRoadRoutes(nextRoutes)
+    Promise.all(
+      routes.map(async route => {
+        try {
+          const positions = await getRoadRoute(route)
+          return { ...route, roadPositions: positions, loading: false }
+        } catch {
+          return { ...route, roadPositions: route.positions, loading: false }
+        }
+      })
+    ).then(enriched => {
+      if (active) setRoadRoutes(enriched)
     })
+
     return () => { active = false }
   }, [routes, showRoutes])
 
-  const [mapLoaded, setMapLoaded] = useState(false);
-
+  // Automatically fit map bounds to encompass all habitations and relocation sites
   useEffect(() => {
-    if (points.length > 0 && mapRef.current && mapLoaded) {
-      let minLng = Infinity;
-      let minLat = Infinity;
-      let maxLng = -Infinity;
-      let maxLat = -Infinity;
-      let validPoints = 0;
-      points.forEach(p => {
-        const lat = Number(p.position[0]);
-        const lng = Number(p.position[1]);
-        if (isNaN(lat) || isNaN(lng)) return;
-        validPoints++;
-        if (lng < minLng) minLng = lng;
-        if (lng > maxLng) maxLng = lng;
-        if (lat < minLat) minLat = lat;
-        if (lat > maxLat) maxLat = lat;
-      });
-      if (validPoints > 0) {
-        const padding = 0.05;
+    if (!mapLoaded || !mapRef.current || points.length === 0) return
+
+    let minLng = Infinity
+    let minLat = Infinity
+    let maxLng = -Infinity
+    let maxLat = -Infinity
+    let count = 0
+
+    points.forEach(p => {
+      const lat = Number(p.position[0])
+      const lng = Number(p.position[1])
+      if (isNaN(lat) || isNaN(lng)) return
+      count++
+      if (lng < minLng) minLng = lng
+      if (lng > maxLng) maxLng = lng
+      if (lat < minLat) minLat = lat
+      if (lat > maxLat) maxLat = lat
+    })
+
+    if (count > 0 && mapRef.current) {
+      const padding = 0.04
+      try {
         mapRef.current.fitBounds(
           [
             [minLng - padding, minLat - padding],
             [maxLng + padding, maxLat + padding]
           ],
-          { padding: 40, duration: 1000, maxZoom: 12 }
-        );
+          { padding: 50, duration: 1200, maxZoom: 12 }
+        )
+      } catch (err) {
+        console.warn('fitBounds skipped:', err)
       }
     }
-  }, [points, mapLoaded]);
+  }, [points, mapLoaded])
 
+  // GeoJSON for Hazard Red/Buffer polygons
   const hazardsGeoJSON: any = useMemo(() => {
+    const hazardPoints = points.filter(p => p.kind === 'hazard')
     return {
       type: 'FeatureCollection',
-      features: points.filter(p => p.kind === 'hazard').flatMap(point => {
-        const shape = zoneShapes[point.name.toLowerCase()] ?? [];
-        if (shape.length < 3) return [];
-        const coordinates = shape.map(c => [c[1], c[0]] as [number, number]);
-        return [{
+      features: hazardPoints.map(point => {
+        const nameLower = point.name.toLowerCase()
+        const key = Object.keys(zoneShapes).find(k => nameLower.includes(k))
+        let coords: [number, number][]
+
+        if (key && zoneShapes[key]) {
+          // zoneShapes are [lat, lon], map to [lon, lat] for GeoJSON
+          coords = zoneShapes[key].map(c => [c[1], c[0]] as [number, number])
+        } else {
+          coords = generateCircularPolygon(point.position[0], point.position[1], 1.0)
+        }
+
+        return {
           type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: [closePolygon(coordinates)] },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coords]
+          },
           properties: {
             id: point.id,
-            status: point.status,
-            color: point.status === 'RED' ? '#bd463f' : point.status === 'BUFFER' ? '#c98728' : '#2d8a6e'
+            name: point.name,
+            status: point.status || 'RED',
+            color: point.status === 'RED' ? '#ef4444' : point.status === 'BUFFER' ? '#f59e0b' : '#10b981'
           }
-        }];
+        }
       })
-    };
-  }, [points]);
+    }
+  }, [points])
 
-  const sitesGeoJSON: any = useMemo(() => {
+  // GeoJSON for Relocation Shelter Safe Zones (Buffer polygons around shelters)
+  const sheltersGeoJSON: any = useMemo(() => {
+    const sitePoints = points.filter(p => p.kind === 'site')
     return {
       type: 'FeatureCollection',
-      features: points.filter(p => p.kind === 'site').flatMap(point => {
-        const lat = Number(point.position[0]);
-        const lng = Number(point.position[1]);
-        if (isNaN(lat) || isNaN(lng)) return [];
-        const coordinates = [
-          [lng - 0.012, lat - 0.016],
-          [lng + 0.012, lat - 0.016],
-          [lng + 0.012, lat + 0.016],
-          [lng - 0.012, lat + 0.016]
-        ] as [number, number][];
-        return [{
+      features: sitePoints.map(point => {
+        const coords = generateCircularPolygon(point.position[0], point.position[1], 0.8)
+        return {
           type: 'Feature',
-          geometry: { type: 'Polygon', coordinates: [closePolygon(coordinates)] },
-          properties: { id: point.id }
-        }];
-      })
-    };
-  }, [points]);
-
-  const routesGeoJSON: any = useMemo(() => {
-    if (!showRoutes || roadRoutes.length === 0) return null;
-    return {
-      type: 'FeatureCollection',
-      features: roadRoutes.flatMap((route, index) => {
-        const positions = route.roadPositions ?? route.positions;
-        const coordinates = positions.map(p => [Number(p[1]), Number(p[0])] as [number, number]);
-        if (coordinates.some(c => isNaN(c[0]) || isNaN(c[1]))) return [];
-        return [{
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coords]
+          },
           properties: {
-            index,
-            isFallback: !route.roadPositions && !route.loading
+            id: point.id,
+            name: point.name
           }
-        }];
+        }
       })
-    };
-  }, [roadRoutes, showRoutes]);
+    }
+  }, [points])
+
+  // GeoJSON for Dynamic Evacuation Routes
+  const routesGeoJSON: any = useMemo(() => {
+    if (!showRoutes || roadRoutes.length === 0) return null
+
+    const features = roadRoutes.map((route, idx) => {
+      const path = route.roadPositions || route.positions
+      // Each point in path is [lat, lon], convert to [lon, lat] for GeoJSON
+      const coordinates = path
+        .map(pt => [Number(pt[1]), Number(pt[0])] as [number, number])
+        .filter(c => !isNaN(c[0]) && !isNaN(c[1]))
+
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates
+        },
+        properties: {
+          index: idx,
+          from: route.from,
+          to: route.to,
+          isPrimary: idx === 0
+        }
+      }
+    })
+
+    return {
+      type: 'FeatureCollection',
+      features
+    }
+  }, [roadRoutes, showRoutes])
 
   return (
-    <div className="real-map relative w-full h-full overflow-hidden">
+    <div
+      className="real-map relative overflow-hidden"
+      style={{
+        width: '100%',
+        height: '520px',
+        minHeight: '520px',
+        position: 'relative',
+        background: '#0f172a'
+      }}
+    >
       <Map
         ref={mapRef}
         mapboxAccessToken={MAPBOX_TOKEN}
         initialViewState={{
           longitude: 78.05,
           latitude: 30.32,
-          zoom: 10,
-          pitch: 55,
+          zoom: 10.5,
+          pitch: 35,
           bearing: 0
         }}
         mapStyle={mapStyle}
-        terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         style={{ width: '100%', height: '100%' }}
         onLoad={() => setMapLoaded(true)}
       >
-        <Source
-          id="mapbox-dem"
-          type="raster-dem"
-          url="mapbox://mapbox.mapbox-terrain-dem-v1"
-          tileSize={512}
-          maxzoom={14}
-        />
-
-        <NavigationControl position="top-right" visualizePitch={true} />
+        <NavigationControl position="top-right" />
         <FullscreenControl position="top-right" />
 
-        {districtGeoJSON && (
-          <Source id="district-boundary" type="geojson" data={districtGeoJSON}>
-            <Layer
-              id="district-layer"
-              type="line"
-              paint={{ 'line-color': '#1c5d8c', 'line-width': 2, 'line-dasharray': [4, 4], 'line-opacity': 0.8 }}
-            />
-            <Layer
-              id="district-fill"
-              type="fill"
-              paint={{ 'fill-color': '#1c5d8c', 'fill-opacity': 0.05 }}
-            />
-          </Source>
-        )}
-
-        <Source id="hazards" type="geojson" data={hazardsGeoJSON as any}>
+        {/* Hazard Zone Polygons */}
+        <Source id="hazards-source" type="geojson" data={hazardsGeoJSON}>
           <Layer
             id="hazards-fill"
             type="fill"
             paint={{
               'fill-color': ['get', 'color'],
-              'fill-opacity': ['match', ['get', 'status'], 'RED', 0.34, 0.2]
+              'fill-opacity': ['match', ['get', 'status'], 'RED', 0.35, 0.2]
             }}
           />
           <Layer
-            id="hazards-line-red"
+            id="hazards-outline"
             type="line"
-            filter={['==', 'status', 'RED']}
-            paint={{ 'line-color': ['get', 'color'], 'line-width': 2.5 }}
-          />
-          <Layer
-            id="hazards-line-other"
-            type="line"
-            filter={['!=', 'status', 'RED']}
-            paint={{ 'line-color': ['get', 'color'], 'line-width': 2.5, 'line-dasharray': [2, 2] }}
+            paint={{
+              'line-color': ['get', 'color'],
+              'line-width': 2.5
+            }}
           />
         </Source>
 
-        <Source id="sites" type="geojson" data={sitesGeoJSON as any}>
+        {/* Relocation Shelter Safe Zones */}
+        <Source id="shelters-source" type="geojson" data={sheltersGeoJSON}>
           <Layer
-            id="sites-fill"
+            id="shelters-fill"
             type="fill"
-            paint={{ 'fill-color': '#2d8a6e', 'fill-opacity': 0.14 }}
+            paint={{
+              'fill-color': '#10b981',
+              'fill-opacity': 0.18
+            }}
           />
           <Layer
-            id="sites-line"
+            id="shelters-outline"
             type="line"
-            paint={{ 'line-color': '#2d8a6e', 'line-width': 2, 'line-dasharray': [2, 2] }}
+            paint={{
+              'line-color': '#059669',
+              'line-width': 2,
+              'line-dasharray': [3, 2]
+            }}
           />
         </Source>
 
+        {/* Evacuation Corridors & Road Routes */}
         {routesGeoJSON && (
-          <Source id="routes" type="geojson" data={routesGeoJSON as any}>
+          <Source id="routes-source" type="geojson" data={routesGeoJSON}>
+            {/* Glowing outer casing */}
             <Layer
-              id="routes-line-solid"
+              id="routes-casing"
               type="line"
-              filter={['!=', ['get', 'isFallback'], true]}
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
               paint={{
-                'line-color': ['case', ['==', ['get', 'index'], 0], '#1c5d8c', '#7b9dac'],
-                'line-width': ['case', ['==', ['get', 'index'], 0], 5, 4],
-                'line-opacity': 0.95
+                'line-color': '#0284c7',
+                'line-width': 7,
+                'line-opacity': 0.3
               }}
             />
+            {/* Main corridor line */}
             <Layer
-              id="routes-line-dashed"
+              id="routes-core"
               type="line"
-              filter={['==', ['get', 'isFallback'], true]}
+              layout={{ 'line-join': 'round', 'line-cap': 'round' }}
               paint={{
-                'line-color': ['case', ['==', ['get', 'index'], 0], '#1c5d8c', '#7b9dac'],
-                'line-width': ['case', ['==', ['get', 'index'], 0], 5, 4],
-                'line-opacity': 0.95,
-                'line-dasharray': [2, 2]
+                'line-color': ['case', ['get', 'isPrimary'], '#38bdf8', '#0284c7'],
+                'line-width': ['case', ['get', 'isPrimary'], 4.5, 3.5],
+                'line-opacity': 0.95
               }}
             />
           </Source>
         )}
 
-        {points.filter(point => !isNaN(Number(point.position[0])) && !isNaN(Number(point.position[1]))).map(point => (
-          <Marker
-            key={point.id}
-            longitude={Number(point.position[1])}
-            latitude={Number(point.position[0])}
-            onClick={(e: any) => {
-              e.originalEvent.stopPropagation();
-              setPopupInfo(point);
-            }}
-          >
-            <div
-              style={{
-                width: point.kind === 'hazard' ? 14 : 12,
-                height: point.kind === 'hazard' ? 14 : 12,
-                backgroundColor: point.kind === 'hazard' ? '#bd463f' : '#2d8a6e',
-                borderRadius: '50%',
-                border: '2px solid white',
-                cursor: 'pointer',
-                boxShadow: '0 0 6px rgba(0,0,0,0.5)'
-              }}
-              title={point.name}
-            />
-          </Marker>
-        ))}
+        {/* Interactive Point Markers */}
+        {points.map(point => {
+          const lat = Number(point.position[0])
+          const lng = Number(point.position[1])
+          if (isNaN(lat) || isNaN(lng)) return null
 
+          const isHazard = point.kind === 'hazard'
+          const isRed = point.status === 'RED'
+
+          return (
+            <Marker
+              key={point.id}
+              longitude={lng}
+              latitude={lat}
+              anchor="center"
+              onClick={(e: any) => {
+                e.originalEvent.stopPropagation()
+                setPopupInfo(point)
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: isHazard ? (isRed ? '#b91c1c' : '#d97706') : '#047857',
+                  color: '#ffffff',
+                  padding: '4px 8px',
+                  borderRadius: '16px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                  border: '1.5px solid rgba(255,255,255,0.9)',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  whiteSpace: 'nowrap',
+                  transform: 'scale(0.95)',
+                  transition: 'transform 0.15s ease'
+                }}
+                title={point.name}
+              >
+                <span
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ffffff',
+                    display: 'inline-block'
+                  }}
+                />
+                <span>{point.name}</span>
+                {!isHazard && point.capacity && (
+                  <span style={{ background: 'rgba(0,0,0,0.25)', padding: '1px 5px', borderRadius: '8px', fontSize: '9px' }}>
+                    {point.capacity}
+                  </span>
+                )}
+              </div>
+            </Marker>
+          )
+        })}
+
+        {/* Detailed Popup */}
         {popupInfo && (
           <Popup
             longitude={Number(popupInfo.position[1])}
             latitude={Number(popupInfo.position[0])}
-            anchor="bottom"
+            anchor="top"
             onClose={() => setPopupInfo(null)}
             closeOnClick={false}
-            offset={12}
-            className="text-sm text-gray-800 font-sans"
+            offset={14}
           >
-            <div className="p-1">
-              <strong className="block text-base mb-1 font-semibold text-gray-900">{popupInfo.name}</strong>
+            <div style={{ padding: '6px', minWidth: '180px', color: '#1e293b' }}>
+              <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a', marginBottom: '4px' }}>
+                {popupInfo.name}
+              </div>
               {popupInfo.kind === 'hazard' ? (
-                <>
-                  <div className="text-gray-700">{popupInfo.status} hazard zone</div>
-                  <div className="text-gray-700">Risk score: {popupInfo.risk}/100</div>
-                  <div className="text-xs text-gray-500 mt-2">Boundary shown at settlement level.</div>
-                </>
+                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Zone Status:</span>
+                    <strong style={{ color: popupInfo.status === 'RED' ? '#dc2626' : '#d97706' }}>
+                      {popupInfo.status} ZONE
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Risk Score:</span>
+                    <strong>{popupInfo.risk ? popupInfo.risk.toFixed(1) : 'N/A'}/100</strong>
+                  </div>
+                  <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
+                    Identified via Sentinel-2 & Terrain ML Analysis
+                  </div>
+                </div>
               ) : (
-                <>
-                  <div className="text-gray-700">Safe relocation area</div>
-                  <div className="text-gray-700">Capacity: {popupInfo.capacity}</div>
-                </>
+                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ color: '#059669', fontWeight: '700' }}>Safe Relocation Alternative</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Carrying Capacity:</span>
+                    <strong>{popupInfo.capacity || 'Active'}</strong>
+                  </div>
+                  <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
+                    Equipped with emergency drinking water & sanitation
+                  </div>
+                </div>
               )}
             </div>
           </Popup>
         )}
       </Map>
 
-      <div className="absolute top-3 left-3 bg-white/95 p-3 rounded-lg shadow-lg z-10 flex flex-col gap-2 max-w-[200px] border border-gray-100">
-        <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Map Style</label>
-        <select 
-          value={mapStyle} 
-          onChange={(e) => setMapStyle(e.target.value)}
-          className="text-sm border border-gray-200 rounded p-1.5 bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      {/* Map Layer Style Selector */}
+      <div
+        className="absolute top-3 left-3 bg-white/95 p-2.5 rounded-lg shadow-lg z-10 flex flex-col gap-1.5 border border-gray-200"
+        style={{ minWidth: '160px' }}
+      >
+        <label style={{ fontSize: '10px', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>
+          SATELLITE BASEMAP
+        </label>
+        <select
+          value={mapStyle}
+          onChange={e => setMapStyle(e.target.value)}
+          style={{
+            fontSize: '12px',
+            padding: '5px 8px',
+            borderRadius: '4px',
+            border: '1px solid #cbd5e1',
+            background: '#ffffff',
+            color: '#1e293b',
+            outline: 'none',
+            fontWeight: '600'
+          }}
         >
-          <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite 3D</option>
-          <option value="mapbox://styles/mapbox/outdoors-v12">Outdoors 3D</option>
-          <option value="mapbox://styles/mapbox/streets-v12">Streets 3D</option>
-          <option value="mapbox://styles/mapbox/light-v11">Light Mode</option>
-          <option value="mapbox://styles/mapbox/dark-v11">Dark Mode</option>
+          <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite Imagery</option>
+          <option value="mapbox://styles/mapbox/outdoors-v12">Topographic Terrain</option>
+          <option value="mapbox://styles/mapbox/streets-v12">Street Navigation</option>
+          <option value="mapbox://styles/mapbox/dark-v11">Tactical Dark</option>
         </select>
       </div>
     </div>

@@ -43,7 +43,7 @@ export const fetchApi = async <T>(endpoint: string, options: RequestInit = {}): 
   });
 
   if (!response.ok) {
-    let errorMessage = 'An error occurred';
+    let errorMessage: any = 'An error occurred';
     try {
       const errorData = await response.json();
       errorMessage = errorData.detail || errorData.message || errorMessage;

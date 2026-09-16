@@ -21,7 +21,7 @@ interface UserInfo {
 interface Settlement {
   id: number;
   name: string;
-  population: int;
+  population: number;
   current_hazard_status: Status;
   risk_score: number;
   priority_level: string;

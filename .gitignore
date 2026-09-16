@@ -52,3 +52,7 @@ backend/alembic/versions/__pycache__/
 
 # Compiled frontend
 frontend/.vite/
+frontend/.next/
+*.tsbuildinfo
+*.http
+dehradun.json

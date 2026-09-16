@@ -7,8 +7,29 @@ async def test_integration():
     print("--- KAVACH API INTEGRATION TEST ---")
     
     async with httpx.AsyncClient() as client:
-        # 1. Test Login
-        print("\n1. Testing Authentication (/auth/login)...")
+        # 0. Test Health Check
+        print("\n0. Testing Health Check (/health)...")
+        try:
+            health_resp = await client.get(f"{API_BASE}/health")
+            if health_resp.status_code == 200:
+                print(f"[OK] Health check passed: {health_resp.json()}")
+            else:
+                print(f"[FAIL] Health check failed: {health_resp.status_code}")
+                return
+        except Exception as e:
+            print(f"[FAIL] Could not connect to API at {API_BASE}: {e}")
+            return
+
+        # 1. Test Unauthenticated Access Protection
+        print("\n1. Testing Unauthenticated Access Protection (/settlements/)...")
+        unauth_resp = await client.get(f"{API_BASE}/settlements/")
+        if unauth_resp.status_code in (401, 403):
+            print(f"[OK] Correctly rejected unauthenticated request ({unauth_resp.status_code} Forbidden/Unauthorized).")
+        else:
+            print(f"[WARN] Expected 401 or 403, got: {unauth_resp.status_code}")
+
+        # 2. Test Login
+        print("\n2. Testing Authentication (/auth/login)...")
         login_data = {
             "email": "admin@kavach.gov.in",
             "password": "KavachAdmin@2026"
@@ -28,16 +49,16 @@ async def test_integration():
         
         headers = {"Authorization": f"Bearer {token}"}
         
-        # 2. Test Get Current User
-        print("\n2. Testing Protected Profile Endpoint (/auth/me)...")
+        # 3. Test Get Current User
+        print("\n3. Testing Protected Profile Endpoint (/auth/me)...")
         me_resp = await client.get(f"{API_BASE}/auth/me", headers=headers)
         if me_resp.status_code == 200:
             print(f"[OK] Profile fetch successful! Email: {me_resp.json()['email']}")
         else:
             print(f"[FAIL] Profile fetch failed: {me_resp.status_code}")
             
-        # 3. Test Get Settlements
-        print("\n3. Testing Settlements Endpoint (/settlements/)...")
+        # 4. Test Get Settlements
+        print("\n4. Testing Settlements Endpoint (/settlements/)...")
         settlements_resp = await client.get(f"{API_BASE}/settlements/", headers=headers)
         if settlements_resp.status_code == 200:
             settlements = settlements_resp.json()
@@ -48,8 +69,8 @@ async def test_integration():
             print(f"[FAIL] Settlements fetch failed: {settlements_resp.status_code}")
             print(settlements_resp.text)
             
-        # 4. Test Get Relocation Sites
-        print("\n4. Testing Relocation Sites Endpoint (/relocation-sites/)...")
+        # 5. Test Get Relocation Sites
+        print("\n5. Testing Relocation Sites Endpoint (/relocation-sites/)...")
         sites_resp = await client.get(f"{API_BASE}/relocation-sites/", headers=headers)
         if sites_resp.status_code == 200:
             sites = sites_resp.json()

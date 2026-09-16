@@ -18,6 +18,7 @@ from app.api.v1.admin_hierarchy import router as admin_hierarchy_router
 from app.api.v1.settlements import router as settlements_router
 from app.api.v1.hazards import router as hazards_router
 from app.api.v1.relocation_sites import router as relocation_sites_router
+from app.api.v1.analytics import router as analytics_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 
@@ -82,6 +83,7 @@ app.include_router(admin_hierarchy_router, prefix="/api")
 app.include_router(settlements_router, prefix="/api")
 app.include_router(hazards_router, prefix="/api")
 app.include_router(relocation_sites_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
 
 
 # ── Health Check ────────────────────────────────────────────

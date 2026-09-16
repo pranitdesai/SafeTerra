@@ -44,8 +44,8 @@ export function KavachMap({
       className="real-map-shell"
       style={{
         width: '100%',
-        height: '520px',
-        minHeight: '520px',
+        height: '560px',
+        minHeight: '560px',
         position: 'relative',
         borderRadius: '8px',
         overflow: 'hidden',

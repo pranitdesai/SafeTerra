@@ -73,6 +73,15 @@ export function MapCanvas({
   const [mapLoaded, setMapLoaded] = useState(false)
   const [popupInfo, setPopupInfo] = useState<MapPoint | null>(null)
   const [mapStyle, setMapStyle] = useState('mapbox://styles/mapbox/satellite-streets-v12')
+  const [is3D, setIs3D] = useState(false)
+
+  // Layer visibility toggles
+  const [layerVisibility, setLayerVisibility] = useState({
+    redZones: true,
+    shelters: true,
+    routes: true,
+    labels: false
+  })
 
   // Immediate routes state: initialized from prop, updated immediately when routes change!
   const [roadRoutes, setRoadRoutes] = useState<RoutedPath[]>([])
@@ -103,6 +112,36 @@ export function MapCanvas({
 
     return () => { active = false }
   }, [routes, showRoutes])
+
+  // Toggle 3D Terrain & Hillshade
+  const handleToggle3D = () => {
+    if (!mapRef.current) return
+    const map = mapRef.current.getMap?.() || mapRef.current
+    if (!map) return
+
+    const next3D = !is3D
+    setIs3D(next3D)
+
+    try {
+      if (next3D) {
+        map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 })
+        map.easeTo({
+          pitch: 62,
+          bearing: -24,
+          duration: 1200
+        })
+      } else {
+        map.setTerrain(null)
+        map.easeTo({
+          pitch: 0,
+          bearing: 0,
+          duration: 800
+        })
+      }
+    } catch (err) {
+      console.warn('3D terrain toggle notice:', err)
+    }
+  }
 
   // Automatically fit map bounds to encompass all habitations and relocation sites
   useEffect(() => {
@@ -141,7 +180,7 @@ export function MapCanvas({
     }
   }, [points, mapLoaded])
 
-  // GeoJSON for Hazard Red/Buffer polygons
+  // GeoJSON for Hazard Red/Buffer polygons - made much more vivid and clear
   const hazardsGeoJSON: any = useMemo(() => {
     const hazardPoints = points.filter(p => p.kind === 'hazard')
     return {
@@ -155,7 +194,7 @@ export function MapCanvas({
           // zoneShapes are [lat, lon], map to [lon, lat] for GeoJSON
           coords = zoneShapes[key].map(c => [c[1], c[0]] as [number, number])
         } else {
-          coords = generateCircularPolygon(point.position[0], point.position[1], 1.0)
+          coords = generateCircularPolygon(point.position[0], point.position[1], 1.2)
         }
 
         return {
@@ -175,13 +214,13 @@ export function MapCanvas({
     }
   }, [points])
 
-  // GeoJSON for Relocation Shelter Safe Zones (Buffer polygons around shelters)
+  // GeoJSON for Relocation Shelter safe boundary - kept minimal so it never obscures red zones
   const sheltersGeoJSON: any = useMemo(() => {
     const sitePoints = points.filter(p => p.kind === 'site')
     return {
       type: 'FeatureCollection',
       features: sitePoints.map(point => {
-        const coords = generateCircularPolygon(point.position[0], point.position[1], 0.8)
+        const coords = generateCircularPolygon(point.position[0], point.position[1], 0.4)
         return {
           type: 'Feature',
           geometry: {
@@ -234,10 +273,10 @@ export function MapCanvas({
       className="real-map relative overflow-hidden"
       style={{
         width: '100%',
-        height: '520px',
-        minHeight: '520px',
+        height: '560px',
+        minHeight: '560px',
         position: 'relative',
-        background: '#0f172a'
+        background: '#0a0f1d'
       }}
     >
       <Map
@@ -252,67 +291,102 @@ export function MapCanvas({
         }}
         mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
-        onLoad={() => setMapLoaded(true)}
+        onLoad={() => {
+          setMapLoaded(true)
+          if (is3D && mapRef.current) {
+            try {
+              const map = mapRef.current.getMap?.() || mapRef.current
+              map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.6 })
+            } catch (e) {
+              console.warn(e)
+            }
+          }
+        }}
       >
-        <NavigationControl position="top-right" />
+        {/* Mapbox DEM source for 3D Mountain Terrain */}
+        <Source
+          id="mapbox-dem"
+          type="raster-dem"
+          url="mapbox://mapbox.mapbox-terrain-dem-v1"
+          tileSize={512}
+          maxzoom={14}
+        />
+
+        {/* 3D Atmospheric Sky Dome */}
+        {is3D && (
+          <Layer
+            id="sky"
+            type="sky"
+            paint={{
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun': [0.0, 90.0],
+              'sky-atmosphere-sun-intensity': 15
+            }}
+          />
+        )}
+
+        <NavigationControl position="top-right" visualizePitch={true} />
         <FullscreenControl position="top-right" />
 
-        {/* Hazard Zone Polygons */}
-        <Source id="hazards-source" type="geojson" data={hazardsGeoJSON}>
-          <Layer
-            id="hazards-fill"
-            type="fill"
-            paint={{
-              'fill-color': ['get', 'color'],
-              'fill-opacity': ['match', ['get', 'status'], 'RED', 0.35, 0.2]
-            }}
-          />
-          <Layer
-            id="hazards-outline"
-            type="line"
-            paint={{
-              'line-color': ['get', 'color'],
-              'line-width': 2.5
-            }}
-          />
-        </Source>
+        {/* Hazard Zone Polygons - Enhanced Visibility */}
+        {layerVisibility.redZones && (
+          <Source id="hazards-source" type="geojson" data={hazardsGeoJSON}>
+            <Layer
+              id="hazards-fill"
+              type="fill"
+              paint={{
+                'fill-color': ['get', 'color'],
+                'fill-opacity': ['match', ['get', 'status'], 'RED', 0.45, 0.25]
+              }}
+            />
+            <Layer
+              id="hazards-outline"
+              type="line"
+              paint={{
+                'line-color': ['get', 'color'],
+                'line-width': ['match', ['get', 'status'], 'RED', 3.5, 2.0],
+                'line-dasharray': ['match', ['get', 'status'], 'RED', [1, 0], [2, 2]]
+              }}
+            />
+          </Source>
+        )}
 
-        {/* Relocation Shelter Safe Zones */}
-        <Source id="shelters-source" type="geojson" data={sheltersGeoJSON}>
-          <Layer
-            id="shelters-fill"
-            type="fill"
-            paint={{
-              'fill-color': '#10b981',
-              'fill-opacity': 0.18
-            }}
-          />
-          <Layer
-            id="shelters-outline"
-            type="line"
-            paint={{
-              'line-color': '#059669',
-              'line-width': 2,
-              'line-dasharray': [3, 2]
-            }}
-          />
-        </Source>
+        {/* Relocation Shelter Safe Zones (Subtle 0.4km boundary, non-intrusive) */}
+        {layerVisibility.shelters && (
+          <Source id="shelters-source" type="geojson" data={sheltersGeoJSON}>
+            <Layer
+              id="shelters-fill"
+              type="fill"
+              paint={{
+                'fill-color': '#10b981',
+                'fill-opacity': 0.08
+              }}
+            />
+            <Layer
+              id="shelters-outline"
+              type="line"
+              paint={{
+                'line-color': '#10b981',
+                'line-width': 1.5,
+                'line-dasharray': [3, 2]
+              }}
+            />
+          </Source>
+        )}
 
         {/* Evacuation Corridors & Road Routes */}
-        {routesGeoJSON && (
+        {layerVisibility.routes && routesGeoJSON && (
           <Source id="routes-source" type="geojson" data={routesGeoJSON}>
-            {/* Glowing outer casing */}
             <Layer
               id="routes-casing"
               type="line"
               layout={{ 'line-join': 'round', 'line-cap': 'round' }}
               paint={{
-                'line-color': '#0284c7',
+                'line-color': '#0369a1',
                 'line-width': 7,
-                'line-opacity': 0.3
+                'line-opacity': 0.4
               }}
             />
-            {/* Main corridor line */}
             <Layer
               id="routes-core"
               type="line"
@@ -326,7 +400,7 @@ export function MapCanvas({
           </Source>
         )}
 
-        {/* Interactive Point Markers */}
+        {/* Sleek, Compact Point Markers (No bulky pills covering the map!) */}
         {points.map(point => {
           const lat = Number(point.position[0])
           const lng = Number(point.position[1])
@@ -335,6 +409,7 @@ export function MapCanvas({
           const isHazard = point.kind === 'hazard'
           const isRed = point.status === 'RED'
 
+          // Render compact, non-intrusive circular icon pins
           return (
             <Marker
               key={point.id}
@@ -347,46 +422,92 @@ export function MapCanvas({
               }}
             >
               <div
+                className="group relative cursor-pointer"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  background: isHazard ? (isRed ? '#b91c1c' : '#d97706') : '#047857',
-                  color: '#ffffff',
-                  padding: '4px 8px',
-                  borderRadius: '16px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
-                  border: '1.5px solid rgba(255,255,255,0.9)',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  whiteSpace: 'nowrap',
-                  transform: 'scale(0.95)',
-                  transition: 'transform 0.15s ease'
+                  justifyContent: 'center'
                 }}
-                title={point.name}
               >
-                <span
-                  style={{
-                    width: '7px',
-                    height: '7px',
-                    borderRadius: '50%',
-                    backgroundColor: '#ffffff',
-                    display: 'inline-block'
-                  }}
-                />
-                <span>{point.name}</span>
-                {!isHazard && point.capacity && (
-                  <span style={{ background: 'rgba(0,0,0,0.25)', padding: '1px 5px', borderRadius: '8px', fontSize: '9px' }}>
-                    {point.capacity}
-                  </span>
+                {isHazard ? (
+                  // Hazard Habitation Marker: Compact 26px pulsing badge
+                  <div
+                    style={{
+                      width: isRed ? '28px' : '22px',
+                      height: isRed ? '28px' : '22px',
+                      borderRadius: '50%',
+                      background: isRed
+                        ? 'radial-gradient(circle, #ef4444 0%, #b91c1c 100%)'
+                        : 'radial-gradient(circle, #f59e0b 0%, #b45309 100%)',
+                      border: '2px solid #ffffff',
+                      boxShadow: isRed
+                        ? '0 0 12px rgba(239, 68, 68, 0.8), 0 2px 6px rgba(0,0,0,0.5)'
+                        : '0 0 8px rgba(245, 158, 11, 0.6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      fontSize: isRed ? '13px' : '11px',
+                      fontWeight: '800',
+                      transition: 'transform 0.15s ease'
+                    }}
+                    title={`${point.name} (${point.status || 'Hazard'})`}
+                  >
+                    {isRed ? '!' : '▲'}
+                  </div>
+                ) : (
+                  // Relocation Site Marker: Sleek 24px emerald shield pin
+                  <div
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+                      border: '2px solid #ffffff',
+                      boxShadow: '0 0 10px rgba(16, 185, 129, 0.7), 0 2px 5px rgba(0,0,0,0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      transition: 'transform 0.15s ease'
+                    }}
+                    title={`${point.name} (Capacity: ${point.capacity || 'Active'})`}
+                  >
+                    ⛨
+                  </div>
                 )}
+
+                {/* Optional subtle name tag or hover tooltip */}
+                {layerVisibility.labels ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      marginTop: '2px',
+                      background: 'rgba(15, 23, 42, 0.88)',
+                      color: '#ffffff',
+                      fontSize: '9px',
+                      fontWeight: '600',
+                      padding: '1px 5px',
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.4)'
+                    }}
+                  >
+                    {point.name}
+                  </div>
+                ) : null}
               </div>
             </Marker>
           )
         })}
 
-        {/* Detailed Popup */}
+        {/* Detailed Inspection Popup */}
         {popupInfo && (
           <Popup
             longitude={Number(popupInfo.position[1])}
@@ -396,35 +517,61 @@ export function MapCanvas({
             closeOnClick={false}
             offset={14}
           >
-            <div style={{ padding: '6px', minWidth: '180px', color: '#1e293b' }}>
-              <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a', marginBottom: '4px' }}>
-                {popupInfo.name}
+            <div style={{ padding: '8px', minWidth: '210px', color: '#1e293b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    backgroundColor:
+                      popupInfo.kind === 'hazard'
+                        ? popupInfo.status === 'RED'
+                          ? '#ef4444'
+                          : '#f59e0b'
+                        : '#10b981'
+                  }}
+                />
+                <div style={{ fontWeight: '800', fontSize: '13px', color: '#0f172a' }}>
+                  {popupInfo.name}
+                </div>
               </div>
+
               {popupInfo.kind === 'hazard' ? (
-                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748b' }}>Zone Status:</span>
-                    <strong style={{ color: popupInfo.status === 'RED' ? '#dc2626' : '#d97706' }}>
+                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#64748b' }}>Zone Category:</span>
+                    <span
+                      style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: '800',
+                        color: '#ffffff',
+                        background: popupInfo.status === 'RED' ? '#dc2626' : '#d97706'
+                      }}
+                    >
                       {popupInfo.status} ZONE
-                    </strong>
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#64748b' }}>Risk Score:</span>
-                    <strong>{popupInfo.risk ? popupInfo.risk.toFixed(1) : 'N/A'}/100</strong>
+                    <span style={{ color: '#64748b' }}>Composite Risk Score:</span>
+                    <strong>{popupInfo.risk ? popupInfo.risk.toFixed(1) : 'N/A'} / 100</strong>
                   </div>
                   <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
-                    Identified via Sentinel-2 & Terrain ML Analysis
+                    Identified via multi-factor terrain slope, soil moisture & rainfall susceptibility.
                   </div>
                 </div>
               ) : (
-                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div style={{ color: '#059669', fontWeight: '700' }}>Safe Relocation Alternative</div>
+                <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ color: '#059669', fontWeight: '700' }}>Designated Safe Relocation Shelter</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#64748b' }}>Carrying Capacity:</span>
                     <strong>{popupInfo.capacity || 'Active'}</strong>
                   </div>
                   <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
-                    Equipped with emergency drinking water & sanitation
+                    Zero flood/landslide risk zone with medical and sanitation logistics.
                   </div>
                 </div>
               )}
@@ -433,33 +580,142 @@ export function MapCanvas({
         )}
       </Map>
 
-      {/* Map Layer Style Selector */}
+      {/* Floating Tactical Controls Overlay */}
       <div
-        className="absolute top-3 left-3 bg-white/95 p-2.5 rounded-lg shadow-lg z-10 flex flex-col gap-1.5 border border-gray-200"
-        style={{ minWidth: '160px' }}
+        className="absolute top-3 left-3 flex flex-col gap-2 z-10"
+        style={{ maxWidth: '240px' }}
       >
-        <label style={{ fontSize: '10px', fontWeight: '800', color: '#475569', letterSpacing: '0.05em' }}>
-          SATELLITE BASEMAP
-        </label>
-        <select
-          value={mapStyle}
-          onChange={e => setMapStyle(e.target.value)}
+        {/* 3D Mountain Terrain Toggle Button */}
+        <button
+          onClick={handleToggle3D}
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            background: is3D ? '#0284c7' : 'rgba(15, 23, 42, 0.88)',
+            color: '#ffffff',
+            border: is3D ? '1.5px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+            boxShadow: is3D ? '0 0 16px rgba(56, 189, 248, 0.4)' : '0 4px 12px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
             fontSize: '12px',
-            padding: '5px 8px',
-            borderRadius: '4px',
-            border: '1px solid #cbd5e1',
-            background: '#ffffff',
-            color: '#1e293b',
-            outline: 'none',
-            fontWeight: '600'
+            fontWeight: '700',
+            backdropFilter: 'blur(8px)',
+            transition: 'all 0.2s ease'
+          }}
+          title="Toggle true 3D Himalayan topographic relief and elevation view"
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '15px' }}>🏔️</span>
+            <span>3D Mountain Terrain</span>
+          </div>
+          <span
+            style={{
+              fontSize: '10px',
+              padding: '2px 6px',
+              borderRadius: '10px',
+              background: is3D ? '#ffffff' : 'rgba(255,255,255,0.2)',
+              color: is3D ? '#0284c7' : '#ffffff',
+              fontWeight: '800'
+            }}
+          >
+            {is3D ? 'ACTIVE' : 'OFF'}
+          </span>
+        </button>
+
+        {/* GIS Basemap & Layer Filter Panel */}
+        <div
+          style={{
+            background: 'rgba(15, 23, 42, 0.90)',
+            backdropFilter: 'blur(8px)',
+            padding: '10px',
+            borderRadius: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            color: '#f8fafc',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            fontSize: '11px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
           }}
         >
-          <option value="mapbox://styles/mapbox/satellite-streets-v12">Satellite Imagery</option>
-          <option value="mapbox://styles/mapbox/outdoors-v12">Topographic Terrain</option>
-          <option value="mapbox://styles/mapbox/streets-v12">Street Navigation</option>
-          <option value="mapbox://styles/mapbox/dark-v11">Tactical Dark</option>
-        </select>
+          {/* Basemap dropdown */}
+          <div>
+            <div style={{ fontSize: '9px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '3px' }}>
+              BASEMAP STYLE
+            </div>
+            <select
+              value={mapStyle}
+              onChange={e => setMapStyle(e.target.value)}
+              style={{
+                width: '100%',
+                fontSize: '11px',
+                padding: '4px 6px',
+                borderRadius: '4px',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                background: '#1e293b',
+                color: '#f8fafc',
+                outline: 'none',
+                fontWeight: '600'
+              }}
+            >
+              <option value="mapbox://styles/mapbox/satellite-streets-v12">🛰️ Satellite Imagery</option>
+              <option value="mapbox://styles/mapbox/outdoors-v12">⛰️ Topo & Contours</option>
+              <option value="mapbox://styles/mapbox/dark-v11">🌑 Tactical Dark</option>
+              <option value="mapbox://styles/mapbox/streets-v12">🗺️ Street Network</option>
+            </select>
+          </div>
+
+          {/* Layer toggles */}
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '6px' }}>
+            <div style={{ fontSize: '9px', fontWeight: '800', color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '5px' }}>
+              LAYER VISIBILITY
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.redZones}
+                  onChange={e => setLayerVisibility(prev => ({ ...prev, redZones: e.target.checked }))}
+                  style={{ accentColor: '#ef4444' }}
+                />
+                <span style={{ color: '#f87171', fontWeight: '600' }}>Multi-Hazard Red Zones</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.shelters}
+                  onChange={e => setLayerVisibility(prev => ({ ...prev, shelters: e.target.checked }))}
+                  style={{ accentColor: '#10b981' }}
+                />
+                <span style={{ color: '#34d399', fontWeight: '600' }}>Safe Relocation Sites</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.routes}
+                  onChange={e => setLayerVisibility(prev => ({ ...prev, routes: e.target.checked }))}
+                  style={{ accentColor: '#38bdf8' }}
+                />
+                <span style={{ color: '#7dd3fc', fontWeight: '600' }}>Evacuation Corridors</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.labels}
+                  onChange={e => setLayerVisibility(prev => ({ ...prev, labels: e.target.checked }))}
+                  style={{ accentColor: '#94a3b8' }}
+                />
+                <span style={{ color: '#cbd5e1' }}>Show Permanent Labels</span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )

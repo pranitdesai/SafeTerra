@@ -47,6 +47,10 @@ async def run_all_seeds():
         from seeds.seed_users import seed_users
         await seed_users(session)
 
+        # 3. Seed demo data (settlements, relocation sites, hazards)
+        from seeds.seed_demo_data import seed_demo_data
+        await seed_demo_data(session)
+
         await session.commit()
         logger.info("seed_complete", status="success")
 

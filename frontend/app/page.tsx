@@ -1,17 +1,19 @@
 'use client'
 
-import { useMemo, useState, useEffect, useTransition } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
   Bell,
   Building2,
+  CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   CloudLightning,
-  CloudRain,
-  Database,
+  EyeOff,
   Flag,
   Gauge,
   HeartPulse,
@@ -19,15 +21,17 @@ import {
   LayoutDashboard,
   LogOut,
   Map,
+  MapPin,
   Menu,
   Navigation,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   RotateCcw,
   Search,
-  Settings,
-  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
+  UserPlus,
   Users,
   X,
   Zap
@@ -37,6 +41,7 @@ import { fetchApi, getAuthToken, removeAuthToken } from '../lib/api'
 
 type Page = 'Dashboard' | 'Administrative Units' | 'Hazard Red Zones' | 'Relocation Strategy' | 'User Management'
 type Status = 'SAFE' | 'BUFFER' | 'RED'
+type SidebarMode = 'expanded' | 'collapsed' | 'hidden'
 
 // API Types
 interface UserInfo {
@@ -86,6 +91,10 @@ interface User {
   full_name: string;
   email: string;
   role: string;
+  assigned_district_id?: number | null;
+  assigned_district_name?: string | null;
+  designation?: string | null;
+  phone?: string | null;
   is_active: boolean;
 }
 
@@ -154,13 +163,17 @@ function Header({
   user,
   onSimulate,
   onReset,
-  simulating
+  simulating,
+  sidebarMode = 'expanded',
+  onToggleSidebar
 }: {
   menu: () => void;
   user: UserInfo | null;
   onSimulate: () => void;
   onReset: () => void;
   simulating: boolean;
+  sidebarMode?: SidebarMode;
+  onToggleSidebar?: () => void;
 }) {
   const router = useRouter()
 
@@ -171,26 +184,52 @@ function Header({
 
   return (
     <header className="topbar">
-      <button className="mobile-menu" onClick={menu} aria-label="Open navigation"><Menu size={20} /></button>
-      <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 'max-content' }}>
-        {user?.role === 'ADMIN' ? (
-          <>
-            <img src="/logo/ndma-logo.png" alt="NDMA Logo" style={{ height: '44px', width: 'auto' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <div style={{ fontSize: '14px', fontWeight: '800', lineHeight: '1.2', color: '#1e293b' }}>राष्ट्रीय आपदा प्रबंधन प्राधिकरण</div>
-              <div style={{ fontSize: '12px', fontWeight: '700', lineHeight: '1.2', color: '#334155' }}>National Disaster Management Authority</div>
-              <div style={{ fontSize: '10px', fontWeight: '600', color: '#64748b', lineHeight: '1.2', marginTop: '2px' }}>गृह मंत्रालय | भारत सरकार (NDRF DM Division)</div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="brand-mark"><ShieldCheck size={21} /></div>
-            <div>
-              <div className="brand-name" style={{ fontSize: '14px' }}>{user?.assigned_district_name ? `${user.assigned_district_name.toUpperCase()}` : 'DISTRICT PORTAL'}</div>
-              <div className="brand-subtitle">DISASTER DECISION SUPPORT</div>
-            </div>
-          </>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <button className="mobile-menu" onClick={menu} aria-label="Open navigation"><Menu size={20} /></button>
+        {onToggleSidebar && (
+          <button
+            type="button"
+            className="topbar-sidebar-toggle"
+            onClick={onToggleSidebar}
+            title={
+              sidebarMode === 'hidden'
+                ? "Show Operations Console"
+                : sidebarMode === 'collapsed'
+                ? "Expand Operations Console"
+                : "Shrink Operations Console (Icons only)"
+            }
+            aria-label="Toggle Operations Console"
+          >
+            {sidebarMode === 'hidden' ? (
+              <PanelLeftOpen size={18} />
+            ) : sidebarMode === 'collapsed' ? (
+              <PanelLeftOpen size={18} />
+            ) : (
+              <PanelLeftClose size={18} />
+            )}
+          </button>
         )}
+
+        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {user?.role === 'ADMIN' ? (
+            <>
+              <img src="/logo/ndma-logo.png" alt="NDMA Logo" style={{ height: '42px', width: 'auto' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '13.5px', fontWeight: '800', lineHeight: '1.2', color: '#1e293b' }}>राष्ट्रीय आपदा प्रबंधन प्राधिकरण</div>
+                <div style={{ fontSize: '12px', fontWeight: '700', lineHeight: '1.2', color: '#334155' }}>National Disaster Management Authority</div>
+                <div style={{ fontSize: '10px', fontWeight: '600', color: '#64748b', lineHeight: '1.2', marginTop: '1px' }}>गृह मंत्रालय | भारत सरकार (NDRF DM Division)</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="brand-mark"><ShieldCheck size={21} /></div>
+              <div>
+                <div className="brand-name" style={{ fontSize: '14px' }}>{user?.assigned_district_name ? `${user.assigned_district_name.toUpperCase()}` : 'DISTRICT PORTAL'}</div>
+                <div className="brand-subtitle">DISASTER DECISION SUPPORT</div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="topbar-actions">
@@ -241,22 +280,79 @@ function Sidebar({
   setPage,
   open,
   close,
-  redZoneCount
+  redZoneCount,
+  userRole,
+  mode = 'expanded',
+  onToggleShrink,
+  onToggleHide
 }: {
   page: Page;
   setPage: (p: Page) => void;
   open: boolean;
   close: () => void;
   redZoneCount: number;
+  userRole?: string;
+  mode?: SidebarMode;
+  onToggleShrink?: () => void;
+  onToggleHide?: () => void;
 }) {
+  const visibleNav = nav.filter(item => item.label !== 'User Management' || userRole === 'ADMIN')
+
   return (
     <>
-      <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
-        <div className="sidebar-heading">OPERATIONS CONSOLE</div>
+      <aside
+        className={`sidebar ${open ? 'sidebar-open' : ''} ${
+          mode === 'collapsed' ? 'sidebar-collapsed' : ''
+        } ${mode === 'hidden' ? 'sidebar-hidden' : ''}`}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: mode === 'collapsed' ? 'center' : 'space-between',
+            marginBottom: '14px',
+            padding: mode === 'collapsed' ? '0' : '0 8px'
+          }}
+        >
+          {mode !== 'collapsed' && (
+            <div className="sidebar-heading sidebar-heading-text" style={{ padding: 0 }}>
+              OPERATIONS CONSOLE
+            </div>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {onToggleShrink && (
+              <button
+                type="button"
+                onClick={onToggleShrink}
+                className="sidebar-ctrl-btn"
+                title={mode === 'collapsed' ? "Expand Operations Console" : "Shrink Operations Console (Icons only)"}
+              >
+                {mode === 'collapsed' ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+              </button>
+            )}
+            {mode !== 'collapsed' && onToggleHide && (
+              <button
+                type="button"
+                onClick={onToggleHide}
+                className="sidebar-ctrl-btn"
+                title="Hide Operations Console completely"
+              >
+                <EyeOff size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+
         <nav>
-          {nav.map(({ label, icon: Icon }) => (
-            <button className={`nav-item ${page === label ? 'nav-active' : ''}`} key={label} onClick={() => { setPage(label); close() }}>
-              <Icon size={18} /><span>{label}</span>
+          {visibleNav.map(({ label, icon: Icon }) => (
+            <button
+              className={`nav-item ${page === label ? 'nav-active' : ''}`}
+              key={label}
+              onClick={() => { setPage(label); close() }}
+              title={label}
+            >
+              <Icon size={18} className="shrink-0" />
+              <span className="nav-label">{label}</span>
               {label === 'Hazard Red Zones' && <span className="nav-count">{redZoneCount}</span>}
             </button>
           ))}
@@ -297,7 +393,15 @@ function SearchBox({ value, setValue, placeholder }: { value: string; setValue: 
   )
 }
 
-function SettlementTable({ rows }: { rows: Settlement[] }) {
+function SettlementTable({
+  rows,
+  selectedId,
+  onSelect
+}: {
+  rows: Settlement[];
+  selectedId?: string | null;
+  onSelect?: (s: Settlement) => void;
+}) {
   return (
     <div className="table-scroll">
       <table>
@@ -305,20 +409,34 @@ function SettlementTable({ rows }: { rows: Settlement[] }) {
           <tr><th>Settlement</th><th>Population</th><th>Hazard status</th><th>Risk score</th><th>Priority</th></tr>
         </thead>
         <tbody>
-          {rows.map(r => (
-            <tr key={r.id}>
-              <td><strong>{r.name}</strong><span className="cell-sub">ID: KVC-{String(r.id).padStart(3, '0')}</span></td>
-              <td>{r.population.toLocaleString('en-IN')}</td>
-              <td><Badge value={r.current_hazard_status} /></td>
-              <td>
-                <div className="risk-score">
-                  <span className={r.risk_score > 80 ? 'score-high' : r.risk_score > 50 ? 'score-medium' : 'score-low'}>{r.risk_score.toFixed(1)}</span>
-                  <div className="score-track"><span style={{ width: `${Math.min(100, r.risk_score)}%` }} /></div>
-                </div>
-              </td>
-              <td><Badge value={r.priority_level} /></td>
-            </tr>
-          ))}
+          {rows.map(r => {
+            const isSelected = selectedId === `s-${r.id}`
+            return (
+              <tr
+                key={r.id}
+                onClick={() => onSelect?.(r)}
+                style={{
+                  cursor: 'pointer',
+                  backgroundColor: isSelected ? 'rgba(28, 93, 140, 0.09)' : undefined,
+                  borderLeft: isSelected ? '3px solid #1c5d8c' : '3px solid transparent',
+                  transition: 'background-color 0.15s ease'
+                }}
+                className={isSelected ? 'selected-row' : ''}
+                title="Click to view and inspect on GIS Satellite map"
+              >
+                <td><strong>{r.name}</strong><span className="cell-sub">ID: KVC-{String(r.id).padStart(3, '0')}</span></td>
+                <td>{r.population.toLocaleString('en-IN')}</td>
+                <td><Badge value={r.current_hazard_status} /></td>
+                <td>
+                  <div className="risk-score">
+                    <span className={r.risk_score > 80 ? 'score-high' : r.risk_score > 50 ? 'score-medium' : 'score-low'}>{r.risk_score.toFixed(1)}</span>
+                    <div className="score-track"><span style={{ width: `${Math.min(100, r.risk_score)}%` }} /></div>
+                  </div>
+                </td>
+                <td><Badge value={r.priority_level} /></td>
+              </tr>
+            )
+          })}
           {rows.length === 0 && <tr><td colSpan={5} className="text-center py-4">No data available.</td></tr>}
         </tbody>
       </table>
@@ -448,7 +566,19 @@ function Dashboard({
   )
 }
 
-function MapPanel({ settlements, sites, userDistrictName }: { settlements: Settlement[], sites: RelocationSite[], userDistrictName?: string | null }) {
+function MapPanel({
+  settlements,
+  sites,
+  userDistrictName,
+  selectedPointId,
+  onSelectPoint
+}: {
+  settlements: Settlement[];
+  sites: RelocationSite[];
+  userDistrictName?: string | null;
+  selectedPointId?: string | null;
+  onSelectPoint?: (point: MapPoint | null) => void;
+}) {
   const hazardPoints: MapPoint[] = settlements.map(s => ({
     id: `s-${s.id}`,
     name: s.name,
@@ -457,12 +587,23 @@ function MapPanel({ settlements, sites, userDistrictName }: { settlements: Settl
     risk: s.risk_score,
     status: s.current_hazard_status
   }))
-  return <div className="map-panel"><KavachMap points={hazardPoints} userDistrictName={userDistrictName} /></div>
+
+  return (
+    <div className="map-panel">
+      <KavachMap
+        points={hazardPoints}
+        userDistrictName={userDistrictName}
+        selectedPointId={selectedPointId}
+        onSelectPoint={onSelectPoint}
+      />
+    </div>
+  )
 }
 
 function Hazards({ settlements, sites, userDistrictName }: { settlements: Settlement[], sites: RelocationSite[], userDistrictName?: string | null }) {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'RED' | 'BUFFER' | 'SAFE'>('ALL')
+  const [selectedSettlementId, setSelectedSettlementId] = useState<string | null>(null)
 
   const rows = useMemo(() => {
     return settlements.filter(s => {
@@ -487,11 +628,26 @@ function Hazards({ settlements, sites, userDistrictName }: { settlements: Settle
         }
       />
       <div className="hazard-layout">
-        <MapPanel settlements={settlements} sites={sites} userDistrictName={userDistrictName} />
+        <MapPanel
+          settlements={settlements}
+          sites={sites}
+          userDistrictName={userDistrictName}
+          selectedPointId={selectedSettlementId}
+          onSelectPoint={(p) => setSelectedSettlementId(p ? p.id : null)}
+        />
         <section className="panel zone-panel">
-          <div className="panel-header"><div><h2>Habitation Risk Status</h2><p>{rows.length} of {settlements.length} habitations listed</p></div></div>
+          <div className="panel-header">
+            <div>
+              <h2>Habitation Risk Status</h2>
+              <p>{rows.length} of {settlements.length} habitations listed • Click to inspect on map</p>
+            </div>
+          </div>
           <SearchBox value={q} setValue={setQ} placeholder="Search habitations..." />
-          <SettlementTable rows={rows} />
+          <SettlementTable
+            rows={rows}
+            selectedId={selectedSettlementId}
+            onSelect={(s) => setSelectedSettlementId(`s-${s.id}`)}
+          />
         </section>
       </div>
     </div>
@@ -702,27 +858,126 @@ function DataPage({
   page,
   districts,
   sites,
-  users
+  users,
+  onRefreshUsers
 }: {
   page: Exclude<Page, 'Dashboard' | 'Hazard Red Zones' | 'Relocation Strategy'>;
   districts: District[];
   sites: RelocationSite[];
   users: User[];
+  onRefreshUsers?: () => Promise<void> | void;
 }) {
   const [q, setQ] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [modalError, setModalError] = useState('')
+  const [successToast, setSuccessToast] = useState<string | null>(null)
+
+  // Form State for creating a user
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<'DDMO' | 'ADMIN'>('DDMO')
+  const [assignedDistrictId, setAssignedDistrictId] = useState<string>('')
+  const [designation, setDesignation] = useState('')
+  const [phone, setPhone] = useState('')
+
+  const safeDistricts = Array.isArray(districts) ? districts : []
+  const safeUsers = Array.isArray(users) ? users : []
   const type = page === 'Administrative Units' ? 'districts' : 'users'
+
+  // Pre-fill default district if needed
+  useEffect(() => {
+    if (!assignedDistrictId && safeDistricts.length > 0) {
+      setAssignedDistrictId(String(safeDistricts[0].id))
+    }
+  }, [safeDistricts, assignedDistrictId])
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setModalError('')
+    setIsSubmitting(true)
+
+    try {
+      if (password.length < 8) {
+        throw new Error('Password must be at least 8 characters long.')
+      }
+
+      const body: any = {
+        email: email.trim(),
+        full_name: fullName.trim(),
+        password,
+        role,
+        designation: designation.trim() || (role === 'DDMO' ? 'District Disaster Management Officer' : 'National Administrator'),
+        phone: phone.trim() || null,
+        assigned_district_id: role === 'DDMO' && assignedDistrictId ? Number(assignedDistrictId) : null,
+      }
+
+      await fetchApi('/users/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+
+      // Reset form
+      setFullName('')
+      setEmail('')
+      setPassword('')
+      setDesignation('')
+      setPhone('')
+      setShowAddModal(false)
+
+      const districtObj = safeDistricts.find(d => String(d.id) === String(assignedDistrictId))
+      const assignedLabel = role === 'DDMO' ? (districtObj ? `District: ${districtObj.name}` : 'District Officer') : 'National Admin'
+      setSuccessToast(`Officer account successfully created for ${body.full_name} (${assignedLabel})!`)
+      setTimeout(() => setSuccessToast(null), 5000)
+
+      if (onRefreshUsers) {
+        await onRefreshUsers()
+      }
+    } catch (err: any) {
+      setModalError(err.message || 'Failed to create user. Please check the inputs.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="page-content">
+      {/* Success Notification Banner */}
+      {successToast && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', color: '#065f46', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+          <span style={{ fontWeight: '500' }}>{successToast}</span>
+        </div>
+      )}
+
       <Heading
         eyebrow="GOVERNANCE & PERMISSIONS"
         title={page}
-        text={type === 'districts' ? 'District and administrative unit coverage across Uttarakhand.' : 'Manage disaster response officers and operational permissions.'}
-        action={<button className="primary-button">{type === 'districts' ? 'Add administrative unit' : 'Invite user'}</button>}
+        text={type === 'districts' ? 'District and administrative unit coverage across Uttarakhand.' : 'Manage disaster response officers, DDMO credentials, and jurisdiction assignments.'}
+        action={
+          type === 'users' ? (
+            <button className="primary-button" onClick={() => setShowAddModal(true)}>
+              <UserPlus size={15} />
+              <span>Create Officer Account</span>
+            </button>
+          ) : (
+            <button className="primary-button">
+              <span>Add administrative unit</span>
+            </button>
+          )
+        }
       />
+
       <section className="panel full-panel">
         <div className="panel-header">
-          <div><h2>{type === 'districts' ? 'Administrative Units' : 'Authorized Personnel'}</h2><p>Showing current database records</p></div>
+          <div>
+            <h2>{type === 'districts' ? 'Administrative Units' : 'Authorized Personnel & Jurisdictions'}</h2>
+            <p>Showing current database records</p>
+          </div>
         </div>
         <SearchBox value={q} setValue={setQ} placeholder={`Search ${type}...`} />
 
@@ -731,7 +986,7 @@ function DataPage({
             <table>
               <thead><tr><th>District</th><th>Code</th><th>Area</th><th>Population</th><th>Coverage</th></tr></thead>
               <tbody>
-                {districts.filter(r => r.name.toLowerCase().includes(q.toLowerCase())).map(r => (
+                {safeDistricts.filter(r => (r.name || '').toLowerCase().includes(q.toLowerCase())).map(r => (
                   <tr key={r.id}>
                     <td><strong>{r.name}</strong><span className="cell-sub">Administrative district</span></td>
                     <td><span className="code-chip">{r.code}</span></td>
@@ -740,32 +995,231 @@ function DataPage({
                     <td><div className="coverage"><span style={{ width: '85%' }} /></div></td>
                   </tr>
                 ))}
-                {districts.length === 0 && <tr><td colSpan={5} className="text-center py-4">No districts found</td></tr>}
+                {safeDistricts.length === 0 && <tr><td colSpan={5} className="text-center py-4">No districts found</td></tr>}
               </tbody>
             </table>
           ) : (
             <table>
-              <thead><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Authorized Officer</th>
+                  <th>Role & Authority</th>
+                  <th>Assigned Jurisdiction</th>
+                  <th>Designation</th>
+                  <th>Contact</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
               <tbody>
-                {users.filter(r => r.full_name.toLowerCase().includes(q.toLowerCase())).map(r => (
-                  <tr key={r.id}>
-                    <td>
-                      <div className="user-cell">
-                        <div className="small-avatar">{r.full_name.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase()}</div>
-                        <div><strong>{r.full_name}</strong><span className="cell-sub">{r.email}</span></div>
-                      </div>
-                    </td>
-                    <td><Badge value={r.role} /></td>
-                    <td><span className={`active-status ${r.is_active ? 'is-active' : 'is-inactive'}`}><span />{r.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td><button className="row-action">Manage</button></td>
-                  </tr>
-                ))}
-                {users.length === 0 && <tr><td colSpan={4} className="text-center py-4">No users found</td></tr>}
+                {safeUsers
+                  .filter(r => 
+                    (r.full_name || '').toLowerCase().includes(q.toLowerCase()) ||
+                    (r.email || '').toLowerCase().includes(q.toLowerCase()) ||
+                    (r.assigned_district_name || '').toLowerCase().includes(q.toLowerCase())
+                  )
+                  .map(r => (
+                    <tr key={r.id}>
+                      <td>
+                        <div className="user-cell">
+                          <div className="small-avatar">
+                            {(r.full_name || 'U').split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <strong>{r.full_name}</strong>
+                            <span className="cell-sub">{r.email}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td><Badge value={r.role} /></td>
+                      <td>
+                        {r.assigned_district_name ? (
+                          <span className="code-chip" style={{ background: '#ecfdf5', color: '#047857', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <MapPin size={11} /> {r.assigned_district_name}
+                          </span>
+                        ) : r.role === 'ADMIN' ? (
+                          <span className="code-chip" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                            🏛️ National / All Districts
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">Unassigned</span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '12px', color: '#334155' }}>
+                          {r.designation || (r.role === 'ADMIN' ? 'National Administrator' : 'District Officer')}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                          {r.phone || '—'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`active-status ${r.is_active ? 'is-active' : 'is-inactive'}`}>
+                          <span />{r.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                {safeUsers.length === 0 && <tr><td colSpan={6} className="text-center py-4">No users found</td></tr>}
               </tbody>
             </table>
           )}
         </div>
       </section>
+
+      {/* Modal: Create Officer Account & Assign District */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)', padding: '16px' }}>
+          <div style={{ background: '#fff', borderRadius: '12px', width: '100%', maxWidth: '520px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e0f2fe', color: '#0369a1', display: 'grid', placeItems: 'center' }}>
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Provision Authorized Officer</h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Create login credentials & assign district jurisdiction</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowAddModal(false)} 
+                style={{ border: 0, background: 'transparent', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser} style={{ padding: '22px' }}>
+              {modalError && (
+                <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '6px', background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{modalError}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Officer Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Dr. Rajesh Rawat"
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Official Email / Gov ID *</label>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="ddmo@kavach.gov.in"
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Password (min 8 chars) *</label>
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Role / Command Level *</label>
+                    <select
+                      value={role}
+                      onChange={(e) => setRole(e.target.value as 'DDMO' | 'ADMIN')}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', boxSizing: 'border-box' }}
+                    >
+                      <option value="DDMO">District Officer (DDMO)</option>
+                      <option value="ADMIN">System Administrator (HQ)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>
+                      {role === 'DDMO' ? 'Assigned District *' : 'Jurisdiction'}
+                    </label>
+                    {role === 'DDMO' ? (
+                      <select
+                        required
+                        value={assignedDistrictId}
+                        onChange={(e) => setAssignedDistrictId(e.target.value)}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', boxSizing: 'border-box' }}
+                      >
+                        {safeDistricts.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.code})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div style={{ padding: '8px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', color: '#64748b', boxSizing: 'border-box' }}>
+                        All Districts (National Oversight)
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Designation</label>
+                    <input
+                      type="text"
+                      value={designation}
+                      onChange={(e) => setDesignation(e.target.value)}
+                      placeholder={role === 'DDMO' ? 'District Disaster Mgmt Officer' : 'National Administrator'}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Phone / Emergency Line</label>
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91-135-2710000"
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '22px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', color: '#475569', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  style={{ padding: '8px 18px', borderRadius: '6px', border: 0, background: '#1c5d8c', color: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: isSubmitting ? 0.7 : 1 }}
+                >
+                  {isSubmitting ? 'Creating...' : 'Create & Assign District'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -786,6 +1240,41 @@ export default function Home() {
   const [users, setUsers] = useState<User[]>([])
   const [alerts, setAlerts] = useState<AlertItem[]>([])
   const [relocationPlan, setRelocationPlan] = useState<RelocationPlan | null>(null)
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>('expanded')
+
+  const handleToggleShrink = () => {
+    setSidebarMode(prev => {
+      const next = prev === 'collapsed' ? 'expanded' : 'collapsed'
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 250)
+      return next
+    })
+  }
+
+  const handleToggleHide = () => {
+    setSidebarMode(prev => {
+      const next = prev === 'hidden' ? 'expanded' : 'hidden'
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 250)
+      return next
+    })
+  }
+
+  const handleCycleSidebar = () => {
+    setSidebarMode(prev => {
+      const next = prev === 'hidden' ? 'expanded' : prev === 'expanded' ? 'collapsed' : 'expanded'
+      setTimeout(() => window.dispatchEvent(new Event('resize')), 250)
+      return next
+    })
+  }
+
+  const reloadUsers = async () => {
+    try {
+      const uData = await fetchApi<any>('/users/')
+      const list = Array.isArray(uData) ? uData : (uData?.users || [])
+      setUsers(list)
+    } catch (err: any) {
+      console.error("Failed to load users:", err)
+    }
+  }
 
   const reloadAllData = async () => {
     try {
@@ -802,6 +1291,10 @@ export default function Home() {
       setSites(rData || [])
       setAlerts(aData || [])
       setRelocationPlan(pData || null)
+
+      if (user?.role === 'ADMIN') {
+        await reloadUsers()
+      }
     } catch (err: any) {
       console.error("Error refreshing dashboard data:", err)
     }
@@ -823,8 +1316,7 @@ export default function Home() {
         await reloadAllData()
 
         if (me.role === 'ADMIN') {
-          const uData = await fetchApi<User[]>('/users/')
-          setUsers(uData || [])
+          await reloadUsers()
         }
       } catch (err: any) {
         if (err.status === 401 || err.status === 403) {
@@ -892,6 +1384,8 @@ export default function Home() {
         onSimulate={handleSimulateCloudburst}
         onReset={handleResetSimulation}
         simulating={simulating}
+        sidebarMode={sidebarMode}
+        onToggleSidebar={handleCycleSidebar}
       />
       <Sidebar
         page={page}
@@ -899,8 +1393,26 @@ export default function Home() {
         open={open}
         close={() => setOpen(false)}
         redZoneCount={redZoneCount}
+        userRole={user?.role}
+        mode={sidebarMode}
+        onToggleShrink={handleToggleShrink}
+        onToggleHide={handleToggleHide}
       />
-      <main className="main-content">
+      {sidebarMode === 'hidden' && (
+        <button
+          type="button"
+          onClick={() => {
+            setSidebarMode('expanded')
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 250)
+          }}
+          className="floating-show-sidebar"
+          title="Restore Operations Console"
+        >
+          <PanelLeftOpen size={16} />
+          <span>Show Operations Console</span>
+        </button>
+      )}
+      <main className={`main-content ${sidebarMode === 'collapsed' ? 'sidebar-collapsed' : sidebarMode === 'hidden' ? 'sidebar-hidden' : ''}`}>
         {page === 'Dashboard' ? (
           <Dashboard
             go={setPage}
@@ -930,6 +1442,7 @@ export default function Home() {
             districts={districts}
             sites={sites}
             users={users}
+            onRefreshUsers={reloadUsers}
           />
         )}
       </main>

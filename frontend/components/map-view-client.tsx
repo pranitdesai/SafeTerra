@@ -62,12 +62,16 @@ export function MapCanvas({
   points,
   routes = [],
   showRoutes = false,
-  userDistrictName
+  userDistrictName,
+  selectedPointId,
+  onSelectPoint
 }: {
   points: MapPoint[];
   routes?: Route[];
   showRoutes?: boolean;
   userDistrictName?: string | null;
+  selectedPointId?: string | null;
+  onSelectPoint?: (point: MapPoint | null) => void;
 }) {
   const mapRef = useRef<any>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
@@ -85,6 +89,49 @@ export function MapCanvas({
 
   // Immediate routes state: initialized from prop, updated immediately when routes change!
   const [roadRoutes, setRoadRoutes] = useState<RoutedPath[]>([])
+
+  // Ensure map canvas properly calculates size
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current) return
+    const timer = setTimeout(() => {
+      try {
+        const map = mapRef.current.getMap?.() || mapRef.current
+        map?.resize?.()
+      } catch (e) {}
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [mapLoaded])
+
+  useEffect(() => {
+    const handleResize = () => {
+      try {
+        const map = mapRef.current?.getMap?.() || mapRef.current
+        map?.resize?.()
+      } catch (e) {}
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Fly to selected point when clicked from table
+  useEffect(() => {
+    if (!mapLoaded || !mapRef.current || !selectedPointId) return
+    const pt = points.find(p => p.id === selectedPointId)
+    if (pt) {
+      try {
+        const map = mapRef.current.getMap?.() || mapRef.current
+        map?.flyTo?.({
+          center: [Number(pt.position[1]), Number(pt.position[0])],
+          zoom: 13,
+          duration: 1200,
+          pitch: is3D ? 55 : 35
+        })
+        setPopupInfo(pt)
+      } catch (e) {
+        console.warn('flyTo failed:', e)
+      }
+    }
+  }, [selectedPointId, points, mapLoaded, is3D])
 
   useEffect(() => {
     if (!showRoutes || !routes || routes.length === 0) {
@@ -273,8 +320,8 @@ export function MapCanvas({
       className="real-map relative overflow-hidden"
       style={{
         width: '100%',
-        height: '560px',
-        minHeight: '560px',
+        height: '100%',
+        minHeight: '620px',
         position: 'relative',
         background: '#0a0f1d'
       }}

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_admin
 from app.core.security import hash_password
 from app.db.session import get_db
+from app.models.administrative import District
 from app.models.audit_log import AuditLog
 from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserListResponse, UserResponse, UserUpdate
@@ -113,13 +114,20 @@ async def create_user(
     )
     db.add(audit)
 
+    district_name = None
+    if user.assigned_district_id:
+        dist_res = await db.execute(
+            select(District.name).where(District.id == user.assigned_district_id)
+        )
+        district_name = dist_res.scalar_one_or_none()
+
     return UserResponse(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         role=user.role.value,
         assigned_district_id=user.assigned_district_id,
-        assigned_district_name=None,
+        assigned_district_name=district_name,
         is_active=user.is_active,
         phone=user.phone,
         designation=user.designation,

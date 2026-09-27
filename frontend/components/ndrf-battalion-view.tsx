@@ -1,26 +1,19 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
-  Activity,
   AlertTriangle,
-  Anchor,
-  ArrowRight,
-  Award,
-  Building2,
   Check,
   CheckCircle2,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
-  ExternalLink,
-  Flame,
   LifeBuoy,
   MapPin,
   Navigation,
   Printer,
   Radio,
   RefreshCw,
-  RotateCcw,
   Search,
   Shield,
   ShieldAlert,
@@ -28,7 +21,7 @@ import {
   Truck,
   Users,
   Wifi,
-  Zap
+  ExternalLink
 } from 'lucide-react'
 import { fetchApi } from '../lib/api'
 
@@ -74,6 +67,14 @@ interface NDRFBattalionViewProps {
   userDistrictName?: string | null
 }
 
+const STAGES: { key: NDRFAlertRecord['status']; label: string; step: number }[] = [
+  { key: 'DISPATCHED', label: 'Dispatched', step: 1 },
+  { key: 'ACKNOWLEDGED', label: 'Acknowledged', step: 2 },
+  { key: 'MOBILIZING', label: 'Mobilizing', step: 3 },
+  { key: 'EN_ROUTE', label: 'En Route', step: 4 },
+  { key: 'ON_SCENE_ACTIVE', label: 'On Scene Active', step: 5 },
+]
+
 export function NDRFBattalionView({
   alerts,
   onRefreshAlerts,
@@ -82,28 +83,50 @@ export function NDRFBattalionView({
   userRole,
   userDistrictName
 }: NDRFBattalionViewProps) {
-  const [selectedFilter, setSelectedFilter] = useState<'ALL' | 'ACTIVE' | 'EN_ROUTE' | 'ON_SCENE'>('ALL')
-  const [updatingDispatchId, setUpdatingDispatchId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'DIRECTIVES' | 'INVENTORY' | 'COMMUNICATIONS'>('DIRECTIVES')
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'EN_ROUTE' | 'ON_SCENE' | 'COMPLETED'>('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null)
+  const [showRosterModal, setShowRosterModal] = useState(false)
 
-  const filteredAlerts = alerts.filter(a => {
-    if (selectedFilter === 'ACTIVE') return a.status !== 'COMPLETED'
-    if (selectedFilter === 'EN_ROUTE') return a.status === 'EN_ROUTE'
-    if (selectedFilter === 'ON_SCENE') return a.status === 'ON_SCENE_ACTIVE'
-    return true
-  })
+  // Filtered Alerts
+  const filteredAlerts = useMemo(() => {
+    return alerts.filter(a => {
+      // Status filter
+      if (filter === 'ACTIVE' && a.status === 'COMPLETED') return false
+      if (filter === 'EN_ROUTE' && a.status !== 'EN_ROUTE') return false
+      if (filter === 'ON_SCENE' && a.status !== 'ON_SCENE_ACTIVE') return false
+      if (filter === 'COMPLETED' && a.status !== 'COMPLETED') return false
 
-  const totalThreatened = alerts.reduce((acc, a) => acc + (a.threatened_population || 0), 0)
-  const totalActiveDeployments = alerts.filter(a => a.status === 'MOBILIZING' || a.status === 'EN_ROUTE' || a.status === 'ON_SCENE_ACTIVE').length
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const matchSector = a.settlement_names.some(n => n.toLowerCase().includes(q))
+        const matchId = a.dispatch_id.toLowerCase().includes(q)
+        const matchAuth = a.authority_level.toLowerCase().includes(q) || a.authorized_by.toLowerCase().includes(q)
+        const matchShelter = a.assigned_shelter_name.toLowerCase().includes(q)
+        if (!matchSector && !matchId && !matchAuth && !matchShelter) return false
+      }
 
-  const handleUpdateStatus = async (
+      return true
+    })
+  }, [alerts, filter, searchQuery])
+
+  // Summary Metrics
+  const activeCount = alerts.filter(a => a.status !== 'COMPLETED').length
+  const totalThreatened = alerts
+    .filter(a => a.status !== 'COMPLETED')
+    .reduce((sum, a) => sum + (a.threatened_population || 0), 0)
+  const onSceneCount = alerts.filter(a => a.status === 'ON_SCENE_ACTIVE').length
+
+  const handleAdvanceStatus = async (
     dispatchId: string,
-    nextStatus: string,
+    nextStatus: NDRFAlertRecord['status'],
     message: string,
     eta?: number
   ) => {
     try {
-      setUpdatingDispatchId(dispatchId)
+      setUpdatingId(dispatchId)
       await fetchApi<any>(`/ndrf/alerts/${dispatchId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -116,856 +139,653 @@ export function NDRFBattalionView({
       })
       await onRefreshAlerts()
     } catch (err: any) {
-      console.error('Failed to update NDRF status:', err)
-      alert(`Could not update NDRF status: ${err.message || 'Server error'}`)
+      console.error('Failed to advance NDRF status:', err)
+      alert(`Could not update status: ${err.message || 'Server error'}`)
     } finally {
-      setUpdatingDispatchId(null)
+      setUpdatingId(null)
     }
   }
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: NDRFAlertRecord['status']) => {
     switch (status) {
       case 'DISPATCHED':
-        return { bg: '#fee2e2', text: '#991b1b', border: '#fecaca', label: '1. DISPATCHED (PENDING ACK)' }
+        return { bg: '#fef2f2', text: '#991b1b', border: '#fecaca', label: '1. Dispatched (Pending Ack)' }
       case 'ACKNOWLEDGED':
-        return { bg: '#fef3c7', text: '#92400e', border: '#fde68a', label: '2. ACKNOWLEDGED BY BN' }
+        return { bg: '#fffbeb', text: '#92400e', border: '#fde68a', label: '2. Acknowledged' }
       case 'MOBILIZING':
-        return { bg: '#e0f2fe', text: '#075985', border: '#bae6fd', label: '3. QRF MOBILIZING' }
+        return { bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe', label: '3. QRF Mobilizing' }
       case 'EN_ROUTE':
-        return { bg: '#f3e8ff', text: '#6b21a8', border: '#e9d5ff', label: '4. CONVOYS EN ROUTE' }
+        return { bg: '#faf5ff', text: '#7e22ce', border: '#e9d5ff', label: '4. Convoys En Route' }
       case 'ON_SCENE_ACTIVE':
-        return { bg: '#dcfce7', text: '#166534', border: '#bbf7d0', label: '5. ON SCENE / RESCUE ACTIVE' }
+        return { bg: '#f0fdf4', text: '#15803d', border: '#bbf7d0', label: '5. On Scene Active' }
+      case 'COMPLETED':
+        return { bg: '#f8fafc', text: '#475569', border: '#e2e8f0', label: 'Completed' }
       default:
-        return { bg: '#f1f5f9', text: '#475569', border: '#cbd5e1', label: status }
+        return { bg: '#f8fafc', text: '#475569', border: '#cbd5e1', label: status }
     }
   }
 
   return (
-    <div className="page-content" style={{ paddingBottom: '40px' }}>
-      {/* Official NDRF Tactical Header Banner */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #09172e 0%, #172554 50%, #1e3a8a 100%)',
-          borderRadius: '12px',
-          padding: '24px 28px',
-          color: '#ffffff',
-          boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.3)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          marginBottom: '24px',
-          position: 'relative',
-          overflow: 'hidden'
-        }}
-      >
-        {/* Subtle background insignia texture */}
-        <div
-          style={{
-            position: 'absolute',
-            right: '-20px',
-            top: '-20px',
-            opacity: 0.08,
-            pointerEvents: 'none'
-          }}
-        >
-          <ShieldAlert size={280} />
+    <div style={{ padding: '24px 32px', maxWidth: '1440px', margin: '0 auto', color: '#1e293b' }}>
+      {/* ── TOP HEADER: CLEAN & CRISP ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '24px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#0369a1', background: '#e0f2fe', padding: '3px 8px', borderRadius: '4px' }}>
+              8th Battalion NDRF • RRC Dehradun
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
+              VHF Net: 143.825 MHz • Haridwar Road
+            </span>
+          </div>
+          <h1 style={{ fontSize: '24px', fontWeight: '800', margin: 0, color: '#0f172a', letterSpacing: '-0.02em' }}>
+            NDRF Tactical Operations Deck
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+            Multi-hazard battalion dispatch, quick response tracking, and statutory red zone relief coordination.
+          </p>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div
-              style={{
-                width: '64px',
-                height: '64px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #b91c1c 0%, #dc2626 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 14px rgba(220, 38, 38, 0.4)',
-                border: '2px solid rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              <LifeBuoy size={36} color="#ffffff" />
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em', background: 'rgba(255, 255, 255, 0.15)', padding: '2px 8px', borderRadius: '4px', color: '#fbbf24' }}>
-                  राष्ट्रीय आपदा मोचन बल • Govt of India
-                </span>
-                <span style={{ fontSize: '11px', fontWeight: '700', background: '#dc2626', color: '#ffffff', padding: '2px 8px', borderRadius: '4px' }}>
-                  DEFCON-1 RAPID DEPLOYMENT
-                </span>
-              </div>
-              <h1 style={{ fontSize: '22px', fontWeight: '800', letterSpacing: '0.02em', margin: 0, color: '#ffffff' }}>
-                NDRF 8th BATTALION — JOINT OPERATIONS CONSOLE
-              </h1>
-              <p style={{ fontSize: '13px', color: '#93c5fd', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>Regional Response Centre (RRC) Dehradun</span>
-                <span>•</span>
-                <span>VHF Tactical Net 143.825 MHz (CH-04)</span>
-                <span>•</span>
-                <span>INSAT-3DR SatCom Link: ACTIVE</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Quick Actions in Banner */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
-              type="button"
-              onClick={onRefreshAlerts}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '9px 14px',
-                borderRadius: '8px',
-                background: 'rgba(255, 255, 255, 0.12)',
-                color: '#ffffff',
-                border: '1px solid rgba(255, 255, 255, 0.25)',
-                fontSize: '12.5px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                transition: 'background 0.15s ease'
-              }}
-            >
-              <RefreshCw size={15} />
-              <span>Refresh Feed</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenNewAlertModal}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 18px',
-                borderRadius: '8px',
-                background: '#dc2626',
-                color: '#ffffff',
-                border: 0,
-                fontSize: '13px',
-                fontWeight: '800',
-                letterSpacing: '0.02em',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(220, 38, 38, 0.5)'
-              }}
-            >
-              <ShieldAlert size={16} />
-              <span>Confirm Red Zone & Dispatch NDRF</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Live Metrics Row inside banner */}
-        <div
-          style={{
-            marginTop: '22px',
-            paddingTop: '18px',
-            borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '16px'
-          }}
-        >
-          <div>
-            <div style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: '600' }}>Active Red Zone Tasks</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginTop: '2px' }}>
-              {alerts.length} <span style={{ fontSize: '12px', fontWeight: '600', color: '#fca5a5' }}>({totalActiveDeployments} mobilizing/en-route)</span>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: '600' }}>Evacuees in Target Zones</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginTop: '2px' }}>
-              {totalThreatened.toLocaleString('en-IN')} <span style={{ fontSize: '12px', fontWeight: '600', color: '#fed7aa' }}>citizens</span>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: '600' }}>Available QRF Teams (8 BN)</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#4ade80', marginTop: '2px' }}>
-              12 Teams <span style={{ fontSize: '12px', fontWeight: '600', color: '#cbd5e1' }}>(1,149 personnel)</span>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: '600' }}>Inflatable Zodiac Boats</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginTop: '2px' }}>
-              28 Craft <span style={{ fontSize: '12px', fontWeight: '600', color: '#67e8f9' }}>(Fast-Water OBM)</span>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: '11px', color: '#93c5fd', textTransform: 'uppercase', fontWeight: '600' }}>Canine Search Squads</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', marginTop: '2px' }}>
-              8 Teams <span style={{ fontSize: '12px', fontWeight: '600', color: '#fef08a' }}>(CSSR Scent)</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid #cbd5e1',
-          marginBottom: '20px'
-        }}
-      >
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             type="button"
-            onClick={() => setActiveTab('DIRECTIVES')}
+            onClick={() => setShowRosterModal(true)}
             style={{
-              padding: '10px 18px',
-              borderBottom: activeTab === 'DIRECTIVES' ? '3px solid #1e3a8a' : '3px solid transparent',
-              background: 'transparent',
-              borderTop: 0,
-              borderLeft: 0,
-              borderRight: 0,
-              color: activeTab === 'DIRECTIVES' ? '#1e3a8a' : '#64748b',
-              fontWeight: '700',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px'
+              gap: '6px',
+              padding: '9px 14px',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              color: '#334155',
+              cursor: 'pointer'
+            }}
+          >
+            <Truck size={15} color="#0369a1" />
+            <span>Equipment Roster</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onRefreshAlerts}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '9px 14px',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '600',
+              color: '#334155',
+              cursor: 'pointer'
+            }}
+            title="Refresh tactical feed"
+          >
+            <RefreshCw size={15} />
+            <span>Refresh</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenNewAlertModal}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '7px',
+              padding: '9px 16px',
+              background: '#b91c1c',
+              border: '1px solid #991b1b',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: '700',
+              color: '#ffffff',
+              cursor: 'pointer',
+              boxShadow: '0 2px 4px rgba(185, 28, 28, 0.2)'
             }}
           >
             <ShieldAlert size={16} />
-            <span>Active Red Zone Taskings ({alerts.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('INVENTORY')}
-            style={{
-              padding: '10px 18px',
-              borderBottom: activeTab === 'INVENTORY' ? '3px solid #1e3a8a' : '3px solid transparent',
-              background: 'transparent',
-              borderTop: 0,
-              borderLeft: 0,
-              borderRight: 0,
-              color: activeTab === 'INVENTORY' ? '#1e3a8a' : '#64748b',
-              fontWeight: '700',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Truck size={16} />
-            <span>Battalion Equipment & Team Strength</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('COMMUNICATIONS')}
-            style={{
-              padding: '10px 18px',
-              borderBottom: activeTab === 'COMMUNICATIONS' ? '3px solid #1e3a8a' : '3px solid transparent',
-              background: 'transparent',
-              borderTop: 0,
-              borderLeft: 0,
-              borderRight: 0,
-              color: activeTab === 'COMMUNICATIONS' ? '#1e3a8a' : '#64748b',
-              fontWeight: '700',
-              fontSize: '13px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
-            }}
-          >
-            <Wifi size={16} />
-            <span>Tactical Comms & SOP Network</span>
+            <span>+ Dispatch NDRF Requisition</span>
           </button>
         </div>
-
-        {activeTab === 'DIRECTIVES' && (
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '600', marginRight: '4px' }}>Filter:</span>
-            <button
-              className={`filter-button ${selectedFilter === 'ALL' ? 'nav-active' : ''}`}
-              onClick={() => setSelectedFilter('ALL')}
-            >
-              All ({alerts.length})
-            </button>
-            <button
-              className={`filter-button ${selectedFilter === 'EN_ROUTE' ? 'nav-active' : ''}`}
-              onClick={() => setSelectedFilter('EN_ROUTE')}
-              style={{ color: '#6b21a8' }}
-            >
-              En Route ({alerts.filter(a => a.status === 'EN_ROUTE').length})
-            </button>
-            <button
-              className={`filter-button ${selectedFilter === 'ON_SCENE' ? 'nav-active' : ''}`}
-              onClick={() => setSelectedFilter('ON_SCENE')}
-              style={{ color: '#166534' }}
-            >
-              On Scene ({alerts.filter(a => a.status === 'ON_SCENE_ACTIVE').length})
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* TAB 1: ACTIVE DIRECTIVES LIST */}
-      {activeTab === 'DIRECTIVES' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {filteredAlerts.length === 0 ? (
-            <div
+      {/* ── METRIC STRIP: 4 SIMPLE TILES ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>Active Requisitions</div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: activeCount > 0 ? '#b91c1c' : '#0f172a', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>{activeCount}</span>
+            {activeCount > 0 && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', animation: 'pulse 1.5s infinite' }} />}
+          </div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>{alerts.length} total requisitions logged</div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>Threatened Population</div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
+            {totalThreatened.toLocaleString('en-IN')}
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Citizens in active target red zones</div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>On-Scene Rescue Ops</div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: onSceneCount > 0 ? '#15803d' : '#0f172a', marginTop: '4px' }}>
+            {onSceneCount} Sectors
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>Active field rescue commenced</div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b', letterSpacing: '0.04em' }}>8th BN QRF Readiness</div>
+          <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284c7', marginTop: '4px' }}>
+            12 Teams Ready
+          </div>
+          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>28 Zodiac boats • 8 canine units</div>
+        </div>
+      </div>
+
+      {/* ── TOOLBAR: FILTER PILLS & SEARCH ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {[
+            { id: 'ALL', label: `All (${alerts.length})` },
+            { id: 'ACTIVE', label: `Active (${activeCount})` },
+            { id: 'EN_ROUTE', label: `En Route (${alerts.filter(a => a.status === 'EN_ROUTE').length})` },
+            { id: 'ON_SCENE', label: `On Scene (${onSceneCount})` },
+            { id: 'COMPLETED', label: `Completed (${alerts.filter(a => a.status === 'COMPLETED').length})` },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setFilter(tab.id as any)}
               style={{
-                background: '#ffffff',
-                padding: '40px',
-                textAlign: 'center',
-                borderRadius: '10px',
-                border: '1px solid #cbd5e1'
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: filter === tab.id ? '700' : '500',
+                border: filter === tab.id ? '1px solid #0284c7' : '1px solid #cbd5e1',
+                background: filter === tab.id ? '#e0f2fe' : '#ffffff',
+                color: filter === tab.id ? '#0369a1' : '#475569',
+                cursor: 'pointer'
               }}
             >
-              <CheckCircle2 size={40} color="#16a34a" style={{ margin: '0 auto 10px' }} />
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', margin: '0 0 4px' }}>
-                All Sectors Standing By
-              </h3>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px' }}>
-                No active mobilization alerts currently matching this filter.
-              </p>
-              <button
-                type="button"
-                onClick={onOpenNewAlertModal}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ position: 'relative', width: '320px' }}>
+          <Search size={15} style={{ position: 'absolute', left: '10px', top: '10px', color: '#94a3b8' }} />
+          <input
+            type="text"
+            placeholder="Search sector, ref #, or authority..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '7px 12px 7px 32px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              boxSizing: 'border-box',
+              outline: 'none'
+            }}
+          />
+        </div>
+      </div>
+
+      {/* ── DEPLOYMENT CARDS LIST ── */}
+      {filteredAlerts.length === 0 ? (
+        <div style={{ background: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '48px 24px', textAlign: 'center' }}>
+          <CheckCircle2 size={36} color="#16a34a" style={{ margin: '0 auto 12px' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0f172a', margin: '0 0 6px' }}>No Requisitions Found</h3>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 16px' }}>
+            {searchQuery ? 'No requisitions matched your search query.' : 'No deployments currently matching this filter status.'}
+          </p>
+          <button
+            type="button"
+            onClick={onOpenNewAlertModal}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              background: '#0284c7',
+              color: '#ffffff',
+              border: 0,
+              fontSize: '13px',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
+            Create New Requisition
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {filteredAlerts.map(alert => {
+            const badge = getStatusBadge(alert.status)
+            const isUpdating = updatingId === alert.dispatch_id
+            const isTimelineOpen = expandedTimelineId === alert.dispatch_id
+            const currentStageIdx = STAGES.findIndex(s => s.key === alert.status)
+
+            return (
+              <div
+                key={alert.dispatch_id}
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  background: '#1e3a8a',
-                  color: '#ffffff',
-                  border: 0,
-                  fontSize: '12.5px',
-                  fontWeight: '700',
-                  cursor: 'pointer'
+                  background: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
+                  overflow: 'hidden'
                 }}
               >
-                Dispatch New Red Zone Requisition
-              </button>
-            </div>
-          ) : (
-            filteredAlerts.map(alert => {
-              const statusInfo = getStatusColor(alert.status)
-              const isUpdating = updatingDispatchId === alert.dispatch_id
+                {/* 1. Header Bar */}
+                <div style={{ padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        background: badge.bg,
+                        color: badge.text,
+                        border: `1px solid ${badge.border}`
+                      }}
+                    >
+                      {badge.label}
+                    </span>
+                    <span style={{ fontSize: '12.5px', fontWeight: '700', fontFamily: 'monospace', color: '#0f172a' }}>
+                      {alert.dispatch_id}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                      Authority: <strong>{alert.authority_level}</strong> ({alert.authorized_by})
+                    </span>
+                  </div>
 
-              return (
-                <div
-                  key={alert.dispatch_id}
-                  style={{
-                    background: '#ffffff',
-                    borderRadius: '12px',
-                    border: '1px solid #cbd5e1',
-                    boxShadow: '0 3px 10px rgba(0, 0, 0, 0.04)',
-                    overflow: 'hidden'
-                  }}
-                >
-                  {/* Card Header Bar */}
-                  <div
-                    style={{
-                      padding: '14px 20px',
-                      background: '#f8fafc',
-                      borderBottom: '1px solid #e2e8f0',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '10px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: '800',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          background: statusInfo.bg,
-                          color: statusInfo.text,
-                          border: `1px solid ${statusInfo.border}`,
-                          letterSpacing: '0.04em'
-                        }}
-                      >
-                        {statusInfo.label}
-                      </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={onNavigateToRelocationStrategy}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '5px 10px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '5px',
+                        fontSize: '11.5px',
+                        fontWeight: '600',
+                        color: '#0369a1',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Navigation size={12} />
+                      <span>Evacuation Route</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '5px 10px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '5px',
+                        fontSize: '11.5px',
+                        fontWeight: '600',
+                        color: '#64748b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Printer size={12} />
+                      <span>Print</span>
+                    </button>
+                  </div>
+                </div>
 
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', fontFamily: 'monospace' }}>
-                        {alert.dispatch_id}
-                      </div>
-
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                        Issued by <strong>{alert.authority_level}</strong> • {alert.authorized_by}
-                      </span>
+                {/* 2. Main Details Grid: 3 Clean Columns */}
+                <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
+                  {/* Column 1: Target Habitations & Risk */}
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Target Red Zones
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <button
-                        type="button"
-                        onClick={onNavigateToRelocationStrategy}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '5px 10px',
-                          borderRadius: '5px',
-                          border: '1px solid #cbd5e1',
-                          background: '#ffffff',
-                          color: '#0369a1',
-                          fontSize: '11.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer'
-                        }}
-                        title="View relocation route matrix and staging camps"
-                      >
-                        <Navigation size={13} />
-                        <span>View Evacuation Route</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '5px 10px',
-                          borderRadius: '5px',
-                          border: '1px solid #cbd5e1',
-                          background: '#ffffff',
-                          color: '#475569',
-                          fontSize: '11.5px',
-                          fontWeight: '600',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <Printer size={13} />
-                        <span>Print Order</span>
-                      </button>
+                    <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c', marginBottom: '8px' }}>
+                      {alert.settlement_names.join(', ')}
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div>Threatened: <strong>{alert.threatened_population.toLocaleString('en-IN')}</strong> persons</div>
+                      <div>Vulnerable: <strong>{alert.vulnerable_population.toLocaleString('en-IN')}</strong> (elderly/children)</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '2px', color: alert.road_access_status.includes('SEVERED') ? '#dc2626' : '#15803d', fontWeight: '600', fontSize: '12px' }}>
+                        <AlertTriangle size={13} />
+                        <span>Road: {alert.road_access_status}</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Card Content Grid */}
-                  <div style={{ padding: '20px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '18px' }}>
-                      {/* Left: Sector & Population */}
-                      <div>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Target Red Zone Habitations
-                        </div>
-                        <div style={{ fontSize: '15px', fontWeight: '800', color: '#b91c1c', marginBottom: '6px' }}>
-                          {alert.settlement_names.join(', ')}
-                        </div>
+                  {/* Column 2: Staging Camp & Tactical Comms */}
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Staging Post & Logistics
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginBottom: '8px' }}>
+                      Camp: {alert.assigned_shelter_name}
+                    </div>
+                    <div style={{ fontSize: '12.5px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div>Assigned Battalion: <strong>{alert.battalion_name}</strong></div>
+                      <div>Comms Channel: <strong>{alert.comms_channel}</strong></div>
+                      <div>Camp Capacity: <strong>{alert.assigned_shelter_capacity || 1200} evacuees</strong></div>
+                    </div>
+                  </div>
 
-                        <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#334155', marginBottom: '10px' }}>
-                          <div>Threatened: <strong>{alert.threatened_population.toLocaleString('en-IN')}</strong></div>
-                          <div>Vulnerable (Elderly/Children): <strong>{alert.vulnerable_population.toLocaleString('en-IN')}</strong></div>
-                        </div>
-
-                        {/* Road Status Warning */}
-                        <div
+                  {/* Column 3: Requisitioned Capabilities */}
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '6px' }}>
+                      Tasked Specialized Units
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                      {alert.tactical_units_requested.map((unit, uIdx) => (
+                        <span
+                          key={uIdx}
                           style={{
-                            padding: '8px 12px',
-                            borderRadius: '6px',
-                            background: alert.road_access_status.includes('SEVERED') ? '#fef2f2' : '#f0fdf4',
-                            border: alert.road_access_status.includes('SEVERED') ? '1px solid #fecaca' : '1px solid #bbf7d0',
-                            fontSize: '11.5px',
-                            color: alert.road_access_status.includes('SEVERED') ? '#991b1b' : '#166534',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px'
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            padding: '3px 8px',
+                            background: '#f1f5f9',
+                            color: '#334155',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '4px'
                           }}
                         >
-                          <AlertTriangle size={15} />
-                          <span>Road Condition: <strong>{alert.road_access_status}</strong></span>
-                        </div>
-                      </div>
-
-                      {/* Middle: Staging Shelter & Radio Net */}
-                      <div>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Forward Staging & Tactical Comms
-                        </div>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>
-                          Camp: {alert.assigned_shelter_name}
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#475569', marginBottom: '8px' }}>
-                          Capacity: <strong>{alert.assigned_shelter_capacity || 1200} persons</strong> • Medical Unit Staged
-                        </div>
-
-                        <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '11.5px', color: '#1e3a8a' }}>
-                          <div><strong>VHF Radio:</strong> {alert.comms_channel}</div>
-                          <div><strong>Assigned Battalion:</strong> {alert.battalion_name}</div>
-                        </div>
-                      </div>
-
-                      {/* Right: Units Requisitioned */}
-                      <div>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Requisitioned Tactical Units
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-                          {alert.tactical_units_requested.map((unit, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                fontSize: '11px',
-                                fontWeight: '600',
-                                padding: '3px 8px',
-                                background: '#eff6ff',
-                                color: '#1e40af',
-                                border: '1px solid #bfdbfe',
-                                borderRadius: '14px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <Check size={11} />
-                              {unit}
-                            </span>
-                          ))}
-                        </div>
-
-                        {alert.tactical_directive && (
-                          <div style={{ fontSize: '11.5px', color: '#78350f', background: '#fffbeb', padding: '8px 10px', borderRadius: '6px', border: '1px solid #fde68a' }}>
-                            <strong>Directive:</strong> {alert.tactical_directive}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Operational Lifecycle Stepper & Field Controller Actions */}
-                    <div
-                      style={{
-                        background: '#f1f5f9',
-                        borderRadius: '8px',
-                        padding: '14px 18px',
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '14px'
-                      }}
-                    >
-                      {/* Step Progress Tracker */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '11px', fontWeight: '800', color: '#475569', textTransform: 'uppercase' }}>
-                          Deployment Progression:
+                          ✓ {unit}
                         </span>
-
-                        {[
-                          { key: 'DISPATCHED', label: 'Dispatched' },
-                          { key: 'ACKNOWLEDGED', label: 'Acknowledged' },
-                          { key: 'MOBILIZING', label: 'Mobilizing' },
-                          { key: 'EN_ROUTE', label: 'En Route' },
-                          { key: 'ON_SCENE_ACTIVE', label: 'On Scene / Active' },
-                        ].map((step, idx) => {
-                          const stepsArr = ['DISPATCHED', 'ACKNOWLEDGED', 'MOBILIZING', 'EN_ROUTE', 'ON_SCENE_ACTIVE']
-                          const currIdx = stepsArr.indexOf(alert.status)
-                          const isDone = currIdx >= idx
-                          const isCurrent = alert.status === step.key
-
-                          return (
-                            <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span
-                                style={{
-                                  fontSize: '11px',
-                                  fontWeight: isCurrent ? '800' : '600',
-                                  padding: '2px 8px',
-                                  borderRadius: '4px',
-                                  background: isCurrent ? '#1e3a8a' : isDone ? '#dcfce7' : '#ffffff',
-                                  color: isCurrent ? '#ffffff' : isDone ? '#166534' : '#94a3b8',
-                                  border: isCurrent ? '1px solid #1e3a8a' : isDone ? '1px solid #86efac' : '1px solid #cbd5e1'
-                                }}
-                              >
-                                {isDone && !isCurrent ? '✓ ' : ''}{step.label}
-                              </span>
-                              {idx < 4 && <span style={{ color: '#cbd5e1', fontSize: '11px' }}>→</span>}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Interactive Advance Buttons for Battalion Duty Officer */}
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        {alert.status === 'DISPATCHED' && (
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(
-                              alert.dispatch_id,
-                              'ACKNOWLEDGED',
-                              'NDRF 8th BN Operations Room logged tactical dispatch. Commandant alerted.'
-                            )}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              background: '#0284c7',
-                              color: '#fff',
-                              border: 0,
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {isUpdating ? 'Updating...' : 'Acknowledge Requisition'}
-                          </button>
-                        )}
-
-                        {alert.status === 'ACKNOWLEDGED' && (
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(
-                              alert.dispatch_id,
-                              'MOBILIZING',
-                              '3 QRF Teams mustering at RRC Haridwar Road with 4 Zodiac boats and search canines.'
-                            )}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              background: '#2563eb',
-                              color: '#fff',
-                              border: 0,
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {isUpdating ? 'Updating...' : 'Muster & Mobilize QRF'}
-                          </button>
-                        )}
-
-                        {alert.status === 'MOBILIZING' && (
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(
-                              alert.dispatch_id,
-                              'EN_ROUTE',
-                              'Convoys rolled out from RRC Dehradun via Thano bypass. GPS Tracking ETA 18 minutes.',
-                              18
-                            )}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              background: '#7c3aed',
-                              color: '#fff',
-                              border: 0,
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {isUpdating ? 'Updating...' : 'Mark Convoys En Route (ETA 18m)'}
-                          </button>
-                        )}
-
-                        {alert.status === 'EN_ROUTE' && (
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(
-                              alert.dispatch_id,
-                              'ON_SCENE_ACTIVE',
-                              'Forward staging post established at Raipur Sports Complex. Zodiac boats deployed in lower basin.'
-                            )}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              background: '#15803d',
-                              color: '#fff',
-                              border: 0,
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {isUpdating ? 'Updating...' : 'Mark On Scene (Commence Rescue)'}
-                          </button>
-                        )}
-
-                        {alert.status === 'ON_SCENE_ACTIVE' && (
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => handleUpdateStatus(
-                              alert.dispatch_id,
-                              'COMPLETED',
-                              'All immediate high-risk evacuees safely decanted into Raipur Staging Camp. Sector stabilized.'
-                            )}
-                            style={{
-                              padding: '6px 14px',
-                              borderRadius: '6px',
-                              background: '#475569',
-                              color: '#fff',
-                              border: 0,
-                              fontSize: '12px',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {isUpdating ? 'Updating...' : 'Mark Mission Completed'}
-                          </button>
-                        )}
-                      </div>
+                      ))}
                     </div>
-
-                    {/* Timeline Expansion */}
-                    {alert.timeline && alert.timeline.length > 0 && (
-                      <div style={{ marginTop: '14px', borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
-                          Tactical Dispatch Timeline:
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {alert.timeline.map((entry, idx) => (
-                            <div key={idx} style={{ fontSize: '11.5px', color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontFamily: 'monospace', color: '#0369a1', fontWeight: '600' }}>[{entry.time}]</span>
-                              <span style={{ fontWeight: '700', color: '#0f172a' }}>{entry.status}:</span>
-                              <span>{entry.message}</span>
-                              <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>({entry.officer})</span>
-                            </div>
-                          ))}
-                        </div>
+                    {alert.tactical_directive && (
+                      <div style={{ fontSize: '11.5px', color: '#92400e', background: '#fffbeb', border: '1px solid #fef3c7', padding: '6px 10px', borderRadius: '4px', lineHeight: 1.4 }}>
+                        <strong>Directive:</strong> {alert.tactical_directive}
                       </div>
                     )}
                   </div>
                 </div>
-              )
-            })
-          )}
+
+                {/* 3. Operational Progression Stepper & Next Step Button */}
+                <div style={{ padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '14px' }}>
+                  {/* Step Indicators */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {STAGES.map((stg, sIdx) => {
+                      const isCompleted = currentStageIdx >= sIdx
+                      const isCurrent = alert.status === stg.key
+
+                      return (
+                        <div key={stg.key} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span
+                            style={{
+                              fontSize: '11.5px',
+                              fontWeight: isCurrent ? '700' : '500',
+                              padding: '3px 9px',
+                              borderRadius: '4px',
+                              background: isCurrent ? '#0284c7' : isCompleted ? '#dcfce7' : '#ffffff',
+                              color: isCurrent ? '#ffffff' : isCompleted ? '#166534' : '#94a3b8',
+                              border: isCurrent ? '1px solid #0284c7' : isCompleted ? '1px solid #bbf7d0' : '1px solid #cbd5e1'
+                            }}
+                          >
+                            {isCompleted && !isCurrent ? '✓ ' : ''}{stg.label}
+                          </span>
+                          {sIdx < STAGES.length - 1 && <span style={{ color: '#cbd5e1', fontSize: '11px' }}>→</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Single Clear Next-Action Button */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {alert.status === 'DISPATCHED' && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleAdvanceStatus(
+                          alert.dispatch_id,
+                          'ACKNOWLEDGED',
+                          'NDRF 8th BN Operations Room logged tactical dispatch. Duty officer alerted Commandant.'
+                        )}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          background: '#0284c7',
+                          color: '#ffffff',
+                          border: 0,
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : '✓ Acknowledge Receipt'}
+                      </button>
+                    )}
+
+                    {alert.status === 'ACKNOWLEDGED' && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleAdvanceStatus(
+                          alert.dispatch_id,
+                          'MOBILIZING',
+                          '3 QRF Teams mustering at RRC Dehradun with 4 Zodiac boats and search canines.'
+                        )}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          background: '#2563eb',
+                          color: '#ffffff',
+                          border: 0,
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : '⚡ Muster & Mobilize QRF'}
+                      </button>
+                    )}
+
+                    {alert.status === 'MOBILIZING' && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleAdvanceStatus(
+                          alert.dispatch_id,
+                          'EN_ROUTE',
+                          'Convoys rolled out from RRC Dehradun via Thano bypass. GPS Tracking ETA 18 minutes.',
+                          18
+                        )}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          background: '#7c3aed',
+                          color: '#ffffff',
+                          border: 0,
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : '🚚 Roll Out Convoys (Mark En Route)'}
+                      </button>
+                    )}
+
+                    {alert.status === 'EN_ROUTE' && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleAdvanceStatus(
+                          alert.dispatch_id,
+                          'ON_SCENE_ACTIVE',
+                          'Forward staging post established at Raipur. Inflatable boats deployed in lower Song basin.'
+                        )}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          background: '#15803d',
+                          color: '#ffffff',
+                          border: 0,
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : '🚩 Arrived on Scene (Commence Rescue)'}
+                      </button>
+                    )}
+
+                    {alert.status === 'ON_SCENE_ACTIVE' && (
+                      <button
+                        type="button"
+                        disabled={isUpdating}
+                        onClick={() => handleAdvanceStatus(
+                          alert.dispatch_id,
+                          'COMPLETED',
+                          'All high-risk evacuees safely decanted into Raipur Staging Camp. Sector stabilized.'
+                        )}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          background: '#475569',
+                          color: '#ffffff',
+                          border: 0,
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isUpdating ? 'Updating...' : '🏁 Mark Mission Completed'}
+                      </button>
+                    )}
+
+                    {/* Toggle Timeline Log */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTimelineId(isTimelineOpen ? null : alert.dispatch_id)}
+                      style={{
+                        padding: '6px 10px',
+                        background: 'transparent',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '5px',
+                        fontSize: '12px',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <span>Log ({alert.timeline?.length || 0})</span>
+                      {isTimelineOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Collapsible Timeline Log */}
+                {isTimelineOpen && (
+                  <div style={{ padding: '14px 20px', background: '#f1f5f9', borderTop: '1px dashed #cbd5e1' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', marginBottom: '8px' }}>
+                      Dispatch Activity Log
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {alert.timeline?.map((log, lIdx) => (
+                        <div key={lIdx} style={{ fontSize: '12px', color: '#334155', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontFamily: 'monospace', color: '#0369a1', fontSize: '11px', fontWeight: '600' }}>[{log.time}]</span>
+                          <span style={{ fontWeight: '700', color: '#0f172a' }}>{log.status}:</span>
+                          <span>{log.message}</span>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>({log.officer})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* TAB 2: BATTALION ASSET & INVENTORY GRID */}
-      {activeTab === 'INVENTORY' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
-          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <LifeBuoy size={20} color="#0284c7" />
-              <h3 style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Water Rescue & Amphibious Equipment
-              </h3>
+      {/* ── MODAL: CLEAN EQUIPMENT & READINESS ROSTER ── */}
+      {showRosterModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(3px)', padding: '16px' }}>
+          <div style={{ background: '#ffffff', borderRadius: '10px', width: '100%', maxWidth: '640px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #cbd5e1', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#e0f2fe', color: '#0369a1', display: 'grid', placeItems: 'center' }}>
+                  <Truck size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>8th Battalion NDRF — Equipment & Readiness</h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>RRC Dehradun / Haridwar Road base assets</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRosterModal(false)}
+                style={{ border: 0, background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '18px', padding: '4px' }}
+              >
+                ✕
+              </button>
             </div>
-            <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Inflatable Motorized Zodiac Boats (OBM):</span>
-                <strong>28 Craft (Ready)</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Deep Diving SCUBA Sets (Fast Current):</span>
-                <strong>16 Units (Certified)</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>High-Buoyancy PFD Life Jackets:</span>
-                <strong>650 Jackets</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Throw Bags & High-Strength Tow Lines:</span>
-                <strong>120 Sets</strong>
-              </div>
-            </div>
-          </div>
 
-          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <ShieldAlert size={20} color="#b91c1c" />
-              <h3 style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Collapsed Structure & Landslide SAR
-              </h3>
-            </div>
-            <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Canine Search Scent Squads (CSSR):</span>
-                <strong>8 Dogs (Field Ready)</strong>
+            <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', marginBottom: '8px' }}>Water Rescue & Amphibious</div>
+                <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>• 28 Inflatable Zodiac Boats (OBM)</div>
+                  <div>• 16 Deep Diving SCUBA Sets</div>
+                  <div>• 650 High-Buoyancy PFD Life Jackets</div>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>High-Angle Mountain Cliff Stretchers:</span>
-                <strong>40 Lightweight Titanium</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Diamond Rotary Concrete & Rock Cutters:</span>
-                <strong>18 Sets</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Search Cam & Acoustic Victim Locators:</span>
-                <strong>12 Sensitive Sensors</strong>
-              </div>
-            </div>
-          </div>
 
-          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '20px', border: '1px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-              <Wifi size={20} color="#16a34a" />
-              <h3 style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Drone Recon & Mobile Triage Field Care
-              </h3>
-            </div>
-            <div style={{ fontSize: '12px', color: '#475569', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Thermal Infrared Scouting Drones:</span>
-                <strong>6 UAVs (10km Range)</strong>
+              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', marginBottom: '8px' }}>Search & Landslide Rescue</div>
+                <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>• 8 Canine Search Scent Squads (CSSR)</div>
+                  <div>• 40 Lightweight Cliff Stretchers</div>
+                  <div>• 18 Rotary Concrete & Rock Cutters</div>
+                </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Mobile Triage Ambulances (All-Terrain):</span>
-                <strong>10 4x4 Vehicles</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
-                <span>Portable Oxygen Concentrators & AEDs:</span>
-                <strong>35 Units</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Satellite Portable BGAN Terminals:</span>
-                <strong>8 Sets (INSAT-3DR)</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* TAB 3: COMMUNICATIONS & SOP */}
-      {activeTab === 'COMMUNICATIONS' && (
-        <div style={{ background: '#ffffff', borderRadius: '10px', padding: '24px', border: '1px solid #cbd5e1' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', margin: '0 0 12px' }}>
-            Statutory Integration: DDMA ↔ NDMA ↔ NDRF Standard Operating Procedure (SOP)
-          </h3>
-          <p style={{ fontSize: '12.5px', color: '#475569', lineHeight: 1.6, margin: '0 0 16px' }}>
-            Under <strong>Section 34 and Section 35 of the Disaster Management Act, 2005</strong>, the District Disaster Management Authority (DDMA) chaired by the District Magistrate or National Disaster Management Authority (NDMA) possesses statutory powers to requisition armed forces and NDRF battalions upon confirmation of an imminent multi-hazard catastrophe.
-          </p>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
-            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', marginBottom: '4px' }}>
-                1. AI Red Zone Confirmation
+              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', marginBottom: '8px' }}>Tactical Communications</div>
+                <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>• VHF Net 143.825 MHz (CH-04)</div>
+                  <div>• 8 Satellite BGAN Terminals (INSAT-3DR)</div>
+                  <div>• Dedicated DEOC Hotline Link</div>
+                </div>
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                Copernicus Sentinel-2, DEM slope (&gt;30°), and IMD rainfall (&gt;75 mm/hr) breach trigger real-time Red Zone confirmation.
+
+              <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: '#0369a1', marginBottom: '8px' }}>Field Medical & Triage</div>
+                <div style={{ fontSize: '12px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div>• 10 All-Terrain Mobile Ambulances</div>
+                  <div>• 35 Portable Oxygen Concentrators</div>
+                  <div>• Forward Staging Triage Kits</div>
+                </div>
               </div>
             </div>
 
-            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', marginBottom: '4px' }}>
-                2. Digital Mobilization Requisition
-              </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                DDMA/NDMA issues electronic requisition detailing affected headcount, severed access roads, and staging shelters.
-              </div>
-            </div>
-
-            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', marginBottom: '4px' }}>
-                3. Tactical Deployment & Comms
-              </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                Battalion QRF musters within 15 minutes, synchronizes VHF Net 143.825 MHz, and establishes forward base at designated staging camps.
-              </div>
+            <div style={{ padding: '12px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={() => setShowRosterModal(false)}
+                style={{ padding: '6px 14px', borderRadius: '5px', background: '#0f172a', color: '#fff', border: 0, fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Close Roster
+              </button>
             </div>
           </div>
         </div>

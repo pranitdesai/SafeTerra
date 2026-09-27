@@ -17,7 +17,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8)
-    role: str = Field(..., pattern="^(ADMIN|DDMO)$")
+    role: str = Field(..., pattern="^(ADMIN|SDMA|DDMO)$")
     assigned_district_id: Optional[int] = None
     phone: Optional[str] = None
     designation: Optional[str] = None
@@ -26,7 +26,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     """Admin request to update an existing user."""
     full_name: Optional[str] = None
-    role: Optional[str] = Field(None, pattern="^(ADMIN|DDMO)$")
+    role: Optional[str] = Field(None, pattern="^(ADMIN|SDMA|DDMO)$")
     assigned_district_id: Optional[int] = None
     is_active: Optional[bool] = None
     phone: Optional[str] = None

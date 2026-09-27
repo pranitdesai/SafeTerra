@@ -18,6 +18,7 @@ from app.db.base import BaseModel
 class UserRole(str, enum.Enum):
     """User roles — extensible for future role additions."""
     ADMIN = "ADMIN"
+    SDMA = "SDMA"
     DDMO = "DDMO"
 
 

@@ -55,7 +55,20 @@ async def seed_users(session: AsyncSession) -> None:
     )
     session.add(admin)
 
-    # ── 2. DDMO — Dehradun ──────────────────────────────────
+    # ── 2. SDMA — Uttarakhand (State Portal) ────────────────
+    sdma = User(
+        email=settings.DEMO_SDMA_EMAIL,
+        full_name="Uttarakhand USDMA Controller",
+        hashed_password=hash_password(settings.DEMO_SDMA_PASSWORD),
+        role=UserRole.SDMA,
+        assigned_district_id=None,
+        is_active=True,
+        designation="State Relief Commissioner & SEOC Director, USDMA",
+        phone="+91-135-2710334",
+    )
+    session.add(sdma)
+
+    # ── 3. DDMO — Dehradun ──────────────────────────────────
     ddmo = User(
         email=settings.DEMO_DDMO_EMAIL,
         full_name="Dehradun DDMO",
@@ -72,6 +85,7 @@ async def seed_users(session: AsyncSession) -> None:
     logger.info(
         "seeded_users",
         admin_email=settings.DEMO_ADMIN_EMAIL,
+        sdma_email=settings.DEMO_SDMA_EMAIL,
         ddmo_email=settings.DEMO_DDMO_EMAIL,
         ddmo_district="Dehradun",
     )

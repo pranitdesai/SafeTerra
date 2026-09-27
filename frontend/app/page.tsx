@@ -34,12 +34,26 @@ import {
   UserPlus,
   Users,
   X,
-  Zap
+  Zap,
+  Radio,
+  FileText,
+  Printer,
+  Shuffle,
+  LifeBuoy,
+  Truck,
+  ShieldAlert
 } from 'lucide-react'
 import { KavachMap, type MapPoint, type Route } from '../components/map-view'
 import { fetchApi, getAuthToken, removeAuthToken } from '../lib/api'
+import { XAIModal } from '../components/xai-modal'
+import { EvacuationOrderModal } from '../components/evacuation-order-modal'
+import { CitizenBroadcastModal } from '../components/citizen-broadcast-modal'
+import { GovUtilityBar } from '../components/gov-utility-bar'
+import { ReallocateModal } from '../components/reallocate-modal'
+import { NDRFAlertModal } from '../components/ndrf-alert-modal'
+import { NDRFBattalionView, type NDRFAlertRecord } from '../components/ndrf-battalion-view'
 
-type Page = 'Dashboard' | 'Administrative Units' | 'Hazard Red Zones' | 'Relocation Strategy' | 'User Management'
+type Page = 'Dashboard' | 'Administrative Units' | 'Hazard Red Zones' | 'Relocation Strategy' | 'NDRF Battalion Ops' | 'User Management'
 type Status = 'SAFE' | 'BUFFER' | 'RED'
 type SidebarMode = 'expanded' | 'collapsed' | 'hidden'
 
@@ -62,7 +76,12 @@ interface Settlement {
   latitude: number;
   longitude: number;
   vulnerable_population?: number;
+  elderly_population?: number;
+  children_population?: number;
+  disabled_population?: number;
   road_access?: boolean;
+  nearest_healthcare_distance?: number;
+  nearest_shelter_distance?: number;
 }
 
 interface District {
@@ -146,12 +165,15 @@ const nav: { label: Page; icon: typeof LayoutDashboard }[] = [
   { label: 'Administrative Units', icon: Building2 },
   { label: 'Hazard Red Zones', icon: Map },
   { label: 'Relocation Strategy', icon: ClipboardList },
+  { label: 'NDRF Battalion Ops', icon: LifeBuoy },
   { label: 'User Management', icon: Users }
 ]
 
 function Badge({ value }: { value: string }) {
+  const v = (value || '').toLowerCase()
+  const cls = v === 'admin' ? 'role-admin' : v === 'sdma' ? 'role-sdma' : v === 'ddmo' ? 'role-ddmo' : `status-${v}`
   return (
-    <span className={`status-badge status-${value.toLowerCase()}`}>
+    <span className={`status-badge ${cls}`}>
       <span className="status-dot" />
       {value}
     </span>
@@ -165,7 +187,10 @@ function Header({
   onReset,
   simulating,
   sidebarMode = 'expanded',
-  onToggleSidebar
+  onToggleSidebar,
+  onOpenBroadcast,
+  ndrfAlertCount,
+  onNavigateNDRF
 }: {
   menu: () => void;
   user: UserInfo | null;
@@ -174,6 +199,9 @@ function Header({
   simulating: boolean;
   sidebarMode?: SidebarMode;
   onToggleSidebar?: () => void;
+  onOpenBroadcast?: () => void;
+  ndrfAlertCount?: number;
+  onNavigateNDRF?: () => void;
 }) {
   const router = useRouter()
 
@@ -217,15 +245,38 @@ function Header({
               <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <div style={{ fontSize: '13.5px', fontWeight: '800', lineHeight: '1.2', color: '#1e293b' }}>राष्ट्रीय आपदा प्रबंधन प्राधिकरण</div>
                 <div style={{ fontSize: '12px', fontWeight: '700', lineHeight: '1.2', color: '#334155' }}>National Disaster Management Authority</div>
-                <div style={{ fontSize: '10px', fontWeight: '600', color: '#64748b', lineHeight: '1.2', marginTop: '1px' }}>गृह मंत्रालय | भारत सरकार (NDRF DM Division)</div>
+                <div style={{ fontSize: '10px', fontWeight: '600', color: '#64748b', lineHeight: '1.2', marginTop: '1px' }}>गृह मंत्रालय | भारत सरकार (NDRF Central Command)</div>
+              </div>
+            </>
+          ) : user?.role === 'SDMA' ? (
+            <>
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0284c7 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 8px rgba(30, 58, 138, 0.3)'
+                }}
+              >
+                <Building2 size={22} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: '13.5px', fontWeight: '800', lineHeight: '1.2', color: '#1e293b' }}>उत्तराखंड राज्य आपदा प्रबंधन प्राधिकरण</div>
+                <div style={{ fontSize: '12px', fontWeight: '700', lineHeight: '1.2', color: '#334155' }}>Uttarakhand SDMA (USDMA)</div>
+                <div style={{ fontSize: '10px', fontWeight: '600', color: '#64748b', lineHeight: '1.2', marginTop: '1px' }}>राज्य आपातकालीन परिचालन केंद्र (SEOC) • Govt of Uttarakhand</div>
               </div>
             </>
           ) : (
             <>
               <div className="brand-mark"><ShieldCheck size={21} /></div>
               <div>
-                <div className="brand-name" style={{ fontSize: '14px' }}>{user?.assigned_district_name ? `${user.assigned_district_name.toUpperCase()}` : 'DISTRICT PORTAL'}</div>
-                <div className="brand-subtitle">DISASTER DECISION SUPPORT</div>
+                <div className="brand-name" style={{ fontSize: '14px' }}>{user?.assigned_district_name ? `${user.assigned_district_name.toUpperCase()} DDMA` : 'DISTRICT PORTAL'}</div>
+                <div className="brand-subtitle">DISTRICT EMERGENCY OPERATIONS (DEOC)</div>
               </div>
             </>
           )}
@@ -239,10 +290,10 @@ function Header({
             className="sim-button"
             onClick={onSimulate}
             disabled={simulating}
-            title="Simulate 135mm/hr Cloudburst and Run AI Re-assessment"
+            title="Simulate 120mm/hr Cloudburst and Trigger Dynamic Red Zones"
           >
             <CloudLightning size={15} />
-            <span>{simulating ? 'Running AI Model...' : 'Simulate Cloudburst'}</span>
+            <span>{simulating ? 'Running AI Model...' : 'Simulate Cloudburst (120 mm/hr)'}</span>
           </button>
           <button
             className="sim-button-reset"
@@ -255,18 +306,56 @@ function Header({
           </button>
         </div>
 
+        {/* Bilingual Citizen Broadcast Button in Header */}
+        <button
+          type="button"
+          className="sim-button"
+          style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#b91c1c', padding: '6px 12px', fontSize: '11.5px', cursor: 'pointer' }}
+          onClick={onOpenBroadcast}
+          title="Open Bilingual Citizen Alert Dispatcher (CAP v1.2)"
+        >
+          <Radio size={13} />
+          <span>Citizen Broadcast (CAP)</span>
+        </button>
+
+        {/* NDRF 8th Battalion Tactical Mobilization Status Pill */}
+        <button
+          type="button"
+          className="sim-button"
+          style={{
+            background: (ndrfAlertCount && ndrfAlertCount > 0) ? '#fef2f2' : '#f0fdf4',
+            borderColor: (ndrfAlertCount && ndrfAlertCount > 0) ? '#fca5a5' : '#86efac',
+            color: (ndrfAlertCount && ndrfAlertCount > 0) ? '#b91c1c' : '#166534',
+            padding: '6px 12px',
+            fontSize: '11.5px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontWeight: '700'
+          }}
+          onClick={onNavigateNDRF}
+          title="Open NDRF 8th Battalion Tactical Operations Console"
+        >
+          <LifeBuoy size={14} />
+          <span>NDRF 8 BN: {(ndrfAlertCount && ndrfAlertCount > 0) ? `${ndrfAlertCount} ACTIVE TASKS` : 'STANDBY (READY)'}</span>
+        </button>
+
         <div className="telemetry-chip">
           <Zap size={11} color="#1c5d8c" />
           <span>Sentinel-2 & SAR Active</span>
         </div>
 
         <div className="live-status"><span className="pulse-dot" />Live Operations</div>
-        <button className="icon-button" aria-label="Notifications"><Bell size={19} /><span className="notification-dot" /></button>
+        <button className="icon-button" aria-label="Notifications" onClick={onOpenBroadcast} title="Citizen Broadcast & Operational Notifications">
+          <Bell size={19} />
+          <span className="notification-dot" />
+        </button>
         <div className="user-menu">
           <div className="avatar">{user ? user.full_name.split(' ').map(n => n[0]).join('') : 'U'}</div>
           <div className="user-copy">
             <strong>{user ? user.full_name : 'Loading...'}</strong>
-            <span>{user ? (user.role === 'ADMIN' ? 'NDRF / SDMA Admin' : 'DDMO Officer') : ''}</span>
+            <span>{user ? (user.role === 'ADMIN' ? 'National NDMA Admin' : user.role === 'SDMA' ? 'Uttarakhand USDMA Controller' : 'DDMO Dehradun Officer') : ''}</span>
           </div>
         </div>
         <button className="logout-button" onClick={handleLogout}><LogOut size={17} /> <span>Sign out</span></button>
@@ -282,6 +371,7 @@ function Sidebar({
   close,
   redZoneCount,
   userRole,
+  ndrfAlertCount,
   mode = 'expanded',
   onToggleShrink,
   onToggleHide
@@ -292,11 +382,12 @@ function Sidebar({
   close: () => void;
   redZoneCount: number;
   userRole?: string;
+  ndrfAlertCount?: number;
   mode?: SidebarMode;
   onToggleShrink?: () => void;
   onToggleHide?: () => void;
 }) {
-  const visibleNav = nav.filter(item => item.label !== 'User Management' || userRole === 'ADMIN')
+  const visibleNav = nav.filter(item => item.label !== 'User Management' || userRole === 'ADMIN' || userRole === 'SDMA')
 
   return (
     <>
@@ -354,6 +445,9 @@ function Sidebar({
               <Icon size={18} className="shrink-0" />
               <span className="nav-label">{label}</span>
               {label === 'Hazard Red Zones' && <span className="nav-count">{redZoneCount}</span>}
+              {label === 'NDRF Battalion Ops' && ndrfAlertCount !== undefined && ndrfAlertCount > 0 && (
+                <span className="nav-count" style={{ background: '#dc2626' }}>{ndrfAlertCount}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -396,21 +490,33 @@ function SearchBox({ value, setValue, placeholder }: { value: string; setValue: 
 function SettlementTable({
   rows,
   selectedId,
-  onSelect
+  onSelect,
+  onInspectXAI,
+  onAlertNDRF
 }: {
   rows: Settlement[];
   selectedId?: string | null;
   onSelect?: (s: Settlement) => void;
+  onInspectXAI?: (s: Settlement) => void;
+  onAlertNDRF?: (s: Settlement) => void;
 }) {
   return (
     <div className="table-scroll">
       <table>
         <thead>
-          <tr><th>Settlement</th><th>Population</th><th>Hazard status</th><th>Risk score</th><th>Priority</th></tr>
+          <tr>
+            <th>Settlement</th>
+            <th>Population</th>
+            <th>Hazard status</th>
+            <th>Risk score</th>
+            <th>Priority</th>
+            <th style={{ textAlign: 'center' }}>Explainable AI & Tactical Response</th>
+          </tr>
         </thead>
         <tbody>
           {rows.map(r => {
             const isSelected = selectedId === `s-${r.id}`
+            const isRed = r.current_hazard_status === 'RED'
             return (
               <tr
                 key={r.id}
@@ -422,7 +528,7 @@ function SettlementTable({
                   transition: 'background-color 0.15s ease'
                 }}
                 className={isSelected ? 'selected-row' : ''}
-                title="Click to view and inspect on GIS Satellite map"
+                title="Click to view on GIS Satellite map or inspect XAI factors"
               >
                 <td><strong>{r.name}</strong><span className="cell-sub">ID: KVC-{String(r.id).padStart(3, '0')}</span></td>
                 <td>{r.population.toLocaleString('en-IN')}</td>
@@ -434,10 +540,66 @@ function SettlementTable({
                   </div>
                 </td>
                 <td><Badge value={r.priority_level} /></td>
+                <td style={{ textAlign: 'center' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onInspectXAI?.(r)
+                      }}
+                      style={{
+                        padding: '4px 9px',
+                        borderRadius: '4px',
+                        background: isRed ? '#fee2e2' : '#e0f2fe',
+                        color: isRed ? '#991b1b' : '#0369a1',
+                        border: isRed ? '1px solid #fecaca' : '1px solid #bae6fd',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}
+                      title="Audit geotechnical, terrain and demographic vulnerability factors"
+                    >
+                      <Zap size={11} />
+                      <span>{isRed ? 'Why Red Zone?' : 'XAI Breakdown'}</span>
+                    </button>
+                    {isRed && onAlertNDRF && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAlertNDRF(r)
+                        }}
+                        style={{
+                          padding: '4px 9px',
+                          borderRadius: '4px',
+                          background: '#dc2626',
+                          color: '#ffffff',
+                          border: '1px solid #b91c1c',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          boxShadow: '0 1px 3px rgba(220,38,38,0.3)'
+                        }}
+                        title="Confirm Red Zone and dispatch tactical mobilization alert to NDRF Battalion"
+                      >
+                        <ShieldAlert size={11} />
+                        <span>Alert NDRF</span>
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             )
           })}
-          {rows.length === 0 && <tr><td colSpan={5} className="text-center py-4">No data available.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={6} className="text-center py-4">No data available.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -450,7 +612,11 @@ function Dashboard({
   settlements,
   sites,
   alerts,
-  simNotice
+  simNotice,
+  onInspectXAI,
+  onOpenEvacOrder,
+  onOpenBroadcast,
+  onAlertNDRF
 }: {
   go: (p: Page) => void;
   user: UserInfo | null;
@@ -458,6 +624,10 @@ function Dashboard({
   sites: RelocationSite[];
   alerts: AlertItem[];
   simNotice: string | null;
+  onInspectXAI?: (s: Settlement) => void;
+  onOpenEvacOrder?: () => void;
+  onOpenBroadcast?: () => void;
+  onAlertNDRF?: (settlements: Settlement[]) => void;
 }) {
   const redZones = settlements.filter(s => s.current_hazard_status === 'RED')
   const immediate = settlements.filter(s => s.priority_level === 'IMMEDIATE')
@@ -491,6 +661,14 @@ function Dashboard({
         text="Real-time GIS intelligence, dynamic Red Zone classification, and carrying capacity relocation readiness."
         action={
           <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="primary-button"
+              style={{ background: '#dc2626', borderColor: '#b91c1c' }}
+              onClick={() => go('NDRF Battalion Ops')}
+              title="Open NDRF 8th Battalion Joint Operations Console"
+            >
+              <LifeBuoy size={16} /> NDRF 8 BN Console
+            </button>
             <button className="primary-button" onClick={() => go('Relocation Strategy')}>
               <ClipboardList size={16} /> Relocation Strategy Plan
             </button>
@@ -529,7 +707,19 @@ function Dashboard({
               <h2>Real-Time Operations Alerts</h2>
               <p>Dynamic triggers from IMD Doppler Radar & Sentinel Telemetry</p>
             </div>
-            <button className="text-button" onClick={() => go('Hazard Red Zones')}>Live Red Zones</button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="sim-button"
+                style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#b91c1c', padding: '5px 10px', fontSize: '11px', cursor: 'pointer' }}
+                onClick={onOpenBroadcast}
+                title="Dispatch Bilingual Citizen Emergency Broadcast (CAP v1.2)"
+              >
+                <Radio size={13} />
+                <span>Citizen Broadcast (CAP)</span>
+              </button>
+              <button className="text-button" onClick={() => go('Hazard Red Zones')}>Live Red Zones</button>
+            </div>
           </div>
           <div className="alert-list">
             {alerts.slice(0, 4).map(alt => (
@@ -556,11 +746,39 @@ function Dashboard({
             <h2>Immediate Relocation Needs</h2>
             <p>Habitations classified under critical hazard risk requiring immediate relocation</p>
           </div>
-          <button className="text-button" onClick={() => go('Relocation Strategy')}>
-            View evacuation routing <ChevronRight size={14} />
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {onAlertNDRF && immediate.length > 0 && (
+              <button
+                type="button"
+                className="outline-button"
+                style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: '700', color: '#b91c1c', borderColor: '#fca5a5', background: '#fef2f2', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                onClick={() => onAlertNDRF(immediate)}
+                title="Confirm Red Zone habitations and dispatch tactical mobilization alert to NDRF Battalion"
+              >
+                <ShieldAlert size={14} color="#dc2626" />
+                <span>Alert NDRF Battalion ({immediate.length})</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="outline-button"
+              style={{ padding: '6px 12px', fontSize: '11.5px', fontWeight: '700', color: '#1c5d8c', borderColor: '#1c5d8c', cursor: 'pointer' }}
+              onClick={onOpenEvacOrder}
+              title="Generate Official District Evacuation Order (PDF) under Section 34 of Disaster Management Act"
+            >
+              <FileText size={14} />
+              <span>Official Evacuation Order (PDF)</span>
+            </button>
+            <button className="text-button" onClick={() => go('Relocation Strategy')}>
+              View evacuation routing <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
-        <SettlementTable rows={immediate} />
+        <SettlementTable
+          rows={immediate}
+          onInspectXAI={onInspectXAI}
+          onAlertNDRF={(s) => onAlertNDRF?.([s])}
+        />
       </section>
     </div>
   )
@@ -600,7 +818,19 @@ function MapPanel({
   )
 }
 
-function Hazards({ settlements, sites, userDistrictName }: { settlements: Settlement[], sites: RelocationSite[], userDistrictName?: string | null }) {
+function Hazards({
+  settlements,
+  sites,
+  userDistrictName,
+  onInspectXAI,
+  onAlertNDRF
+}: {
+  settlements: Settlement[];
+  sites: RelocationSite[];
+  userDistrictName?: string | null;
+  onInspectXAI?: (s: Settlement) => void;
+  onAlertNDRF?: (settlements: Settlement[]) => void;
+}) {
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<'ALL' | 'RED' | 'BUFFER' | 'SAFE'>('ALL')
   const [selectedSettlementId, setSelectedSettlementId] = useState<string | null>(null)
@@ -613,6 +843,8 @@ function Hazards({ settlements, sites, userDistrictName }: { settlements: Settle
     })
   }, [q, filter, settlements])
 
+  const redZones = settlements.filter(s => s.current_hazard_status === 'RED')
+
   return (
     <div className="page-content">
       <Heading
@@ -620,9 +852,33 @@ function Hazards({ settlements, sites, userDistrictName }: { settlements: Settle
         title="Multi-Hazard Red Zones"
         text="Satellite-inferred Red Zones dynamically updated from slope, rainfall, and vegetation indices."
         action={
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {onAlertNDRF && redZones.length > 0 && (
+              <button
+                type="button"
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  border: 0,
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(220, 38, 38, 0.4)'
+                }}
+                onClick={() => onAlertNDRF(redZones)}
+                title="Confirm and Mobilize NDRF Battalion for all active Red Zones"
+              >
+                <ShieldAlert size={14} />
+                <span>Alert NDRF Battalion ({redZones.length})</span>
+              </button>
+            )}
             <button className={`filter-button ${filter === 'ALL' ? 'nav-active' : ''}`} onClick={() => setFilter('ALL')}>All ({settlements.length})</button>
-            <button className={`filter-button ${filter === 'RED' ? 'nav-active' : ''}`} onClick={() => setFilter('RED')} style={{ color: '#b84328' }}>Red Zones ({settlements.filter(s => s.current_hazard_status === 'RED').length})</button>
+            <button className={`filter-button ${filter === 'RED' ? 'nav-active' : ''}`} onClick={() => setFilter('RED')} style={{ color: '#b84328' }}>Red Zones ({redZones.length})</button>
             <button className={`filter-button ${filter === 'BUFFER' ? 'nav-active' : ''}`} onClick={() => setFilter('BUFFER')} style={{ color: '#a6772d' }}>Buffer ({settlements.filter(s => s.current_hazard_status === 'BUFFER').length})</button>
           </div>
         }
@@ -633,20 +889,36 @@ function Hazards({ settlements, sites, userDistrictName }: { settlements: Settle
           sites={sites}
           userDistrictName={userDistrictName}
           selectedPointId={selectedSettlementId}
-          onSelectPoint={(p) => setSelectedSettlementId(p ? p.id : null)}
+          onSelectPoint={(p) => {
+            if (!p) {
+              setSelectedSettlementId(null)
+              return
+            }
+            setSelectedSettlementId(p.id)
+            const idNum = parseInt(p.id.replace('s-', ''))
+            const found = settlements.find(x => x.id === idNum)
+            if (found && onInspectXAI) {
+              onInspectXAI(found)
+            }
+          }}
         />
         <section className="panel zone-panel">
           <div className="panel-header">
             <div>
               <h2>Habitation Risk Status</h2>
-              <p>{rows.length} of {settlements.length} habitations listed • Click to inspect on map</p>
+              <p>{rows.length} of {settlements.length} habitations listed • Click to inspect XAI factors</p>
             </div>
           </div>
           <SearchBox value={q} setValue={setQ} placeholder="Search habitations..." />
           <SettlementTable
             rows={rows}
             selectedId={selectedSettlementId}
-            onSelect={(s) => setSelectedSettlementId(`s-${s.id}`)}
+            onSelect={(s) => {
+              setSelectedSettlementId(`s-${s.id}`)
+              onInspectXAI?.(s)
+            }}
+            onInspectXAI={onInspectXAI}
+            onAlertNDRF={(s) => onAlertNDRF?.([s])}
           />
         </section>
       </div>
@@ -659,43 +931,204 @@ function RelocationStrategyView({
   sites,
   userDistrictName,
   relocationPlan,
-  onRefreshPlan
+  onRefreshPlan,
+  onOpenEvacOrder
 }: {
   settlements: Settlement[];
   sites: RelocationSite[];
   userDistrictName?: string | null;
   relocationPlan: RelocationPlan | null;
-  onRefreshPlan: () => void;
+  onRefreshPlan: () => Promise<void> | void;
+  onOpenEvacOrder?: () => void;
 }) {
-  const hazardPoints: MapPoint[] = settlements.map(s => ({
-    id: `s-${s.id}`,
-    name: s.name,
-    position: [s.latitude || 30.3165, s.longitude || 78.0322],
-    kind: 'hazard',
-    risk: s.risk_score,
-    status: s.current_hazard_status
-  }))
+  const [localPlan, setLocalPlan] = useState<RelocationPlan | null>(relocationPlan)
+  const [reallocatingItem, setReallocatingItem] = useState<AllocationRecord | null>(null)
+  const [reallocNotice, setReallocNotice] = useState<string | null>(null)
+  const [isRecalculating, setIsRecalculating] = useState(false)
 
-  const relocationPoints: MapPoint[] = sites.map(s => ({
-    id: `rs-${s.id}`,
-    name: s.name,
-    position: [s.latitude || 30.3165, s.longitude || 78.0322],
-    kind: 'site',
-    capacity: `${s.current_occupancy} / ${s.max_capacity}`
-  }))
+  // Keep localPlan in sync when parent relocationPlan updates
+  useEffect(() => {
+    setLocalPlan(relocationPlan)
+  }, [relocationPlan])
 
-  const routes = relocationPlan?.evacuation_routes || []
+  const hazardPoints: MapPoint[] = useMemo(() => {
+    return settlements.map(s => ({
+      id: `s-${s.id}`,
+      name: s.name,
+      position: [s.latitude || 30.3165, s.longitude || 78.0322],
+      kind: 'hazard',
+      risk: s.risk_score,
+      status: s.current_hazard_status
+    }))
+  }, [settlements])
+
+  const activePlan = localPlan || relocationPlan
+
+  // Compute dynamic shelter points with live occupancy reflecting reallocations
+  const relocationPoints: MapPoint[] = useMemo(() => {
+    return sites.map(s => {
+      const u = activePlan?.shelter_utilization.find(x => x.shelter_id === s.id)
+      const allocated = u ? u.allocated_count : 0
+      const finalOcc = s.current_occupancy + allocated
+      return {
+        id: `rs-${s.id}`,
+        name: s.name,
+        position: [s.latitude || 30.3165, s.longitude || 78.0322],
+        kind: 'site',
+        capacity: `${finalOcc} / ${s.max_capacity}`
+      }
+    })
+  }, [sites, activePlan])
+
+  const routes = activePlan?.evacuation_routes || []
+
+  // Interactive Reallocation Handler
+  const handleConfirmReallocation = (
+    habitationId: number,
+    oldShelterId: number,
+    newShelterId: number,
+    newShelterName: string,
+    newDistanceKm: number,
+    medicalMatched: boolean
+  ) => {
+    if (!activePlan) return
+
+    const allocIndex = activePlan.allocations.findIndex(
+      a => a.habitation_id === habitationId && a.shelter_id === oldShelterId
+    )
+    if (allocIndex === -1) return
+
+    const peopleCount = activePlan.allocations[allocIndex].people_allocated
+    const habName = activePlan.allocations[allocIndex].habitation_name
+
+    // 1. Update allocations array
+    const updatedAllocations = [...activePlan.allocations]
+    const oldAlloc = updatedAllocations[allocIndex]
+
+    const targetShelterObj = sites.find(s => s.id === newShelterId)
+    const newPositions: [number, number][] =
+      oldAlloc.route_positions && oldAlloc.route_positions.length > 0 && targetShelterObj
+        ? [oldAlloc.route_positions[0], [targetShelterObj.latitude, targetShelterObj.longitude]]
+        : oldAlloc.route_positions
+
+    updatedAllocations[allocIndex] = {
+      ...oldAlloc,
+      shelter_id: newShelterId,
+      shelter_name: newShelterName,
+      distance_km: newDistanceKm,
+      medical_facility_matched: medicalMatched,
+      route_positions: newPositions
+    }
+
+    // 2. Update shelter utilization
+    const updatedUtilization = activePlan.shelter_utilization.map(u => {
+      if (u.shelter_id === oldShelterId) {
+        const newAllocated = Math.max(0, u.allocated_count - peopleCount)
+        const finalOcc = u.starting_occupancy + newAllocated
+        return {
+          ...u,
+          allocated_count: newAllocated,
+          final_occupancy: finalOcc,
+          utilization_percentage: Math.round((finalOcc / Math.max(1, u.max_capacity)) * 100),
+          is_at_capacity: finalOcc >= u.max_capacity
+        }
+      }
+      if (u.shelter_id === newShelterId) {
+        const newAllocated = u.allocated_count + peopleCount
+        const finalOcc = u.starting_occupancy + newAllocated
+        return {
+          ...u,
+          allocated_count: newAllocated,
+          final_occupancy: finalOcc,
+          utilization_percentage: Math.round((finalOcc / Math.max(1, u.max_capacity)) * 100),
+          is_at_capacity: finalOcc >= u.max_capacity
+        }
+      }
+      return u
+    })
+
+    // 3. Update evacuation routes on map
+    const updatedRoutes = activePlan.evacuation_routes.map(r => {
+      if (r.from === habName) {
+        return {
+          ...r,
+          to: newShelterName,
+          positions: newPositions
+        }
+      }
+      return r
+    })
+
+    setLocalPlan({
+      ...activePlan,
+      allocations: updatedAllocations,
+      shelter_utilization: updatedUtilization,
+      evacuation_routes: updatedRoutes
+    })
+
+    setReallocNotice(`Reallocated ${habName} (${peopleCount.toLocaleString()} persons) to ${newShelterName}! Transit distance: ${newDistanceKm} km. Carrying capacity recalculated.`)
+    setTimeout(() => setReallocNotice(null), 6000)
+  }
+
+  const handleRecalculate = async () => {
+    try {
+      setIsRecalculating(true)
+      setReallocNotice("Executing Multi-Objective Carrying Capacity Optimization algorithm...")
+      await onRefreshPlan()
+      setReallocNotice("Carrying capacity optimization re-calculated & synchronized with database!")
+      setTimeout(() => setReallocNotice(null), 4000)
+    } finally {
+      setIsRecalculating(false)
+    }
+  }
 
   return (
     <div className="page-content">
+      {reallocNotice && (
+        <div style={{
+          marginBottom: '20px',
+          padding: '12px 18px',
+          background: '#f0fdf4',
+          border: '1.5px solid #86efac',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          color: '#15803d',
+          fontSize: '13px',
+          fontWeight: '700'
+        }}>
+          <CheckCircle2 size={18} color="#16a34a" />
+          <span>{reallocNotice}</span>
+        </div>
+      )}
+
       <Heading
         eyebrow="CARRYING CAPACITY & EVACUATION DECISION SUPPORT"
         title="Relocation Strategy & Allocation"
         text="Automated matching of vulnerable habitations to safer alternative shelters respecting carrying capacity and medical needs."
         action={
-          <button className="primary-button" onClick={onRefreshPlan}>
-            <RefreshCw size={15} /> Recalculate Carrying Capacity Plan
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="outline-button"
+              style={{ padding: '8px 14px', borderColor: '#1c5d8c', color: '#1c5d8c', fontWeight: '700', cursor: 'pointer' }}
+              onClick={onOpenEvacOrder}
+              title="Generate Official District Evacuation Order (PDF) under Section 34 of Disaster Management Act, 2005"
+            >
+              <FileText size={15} />
+              <span>Generate Official Evacuation Order (PDF)</span>
+            </button>
+            <button
+              className="primary-button"
+              onClick={handleRecalculate}
+              disabled={isRecalculating}
+              style={{ opacity: isRecalculating ? 0.7 : 1 }}
+            >
+              <RefreshCw size={15} className={isRecalculating ? 'animate-spin' : ''} />
+              <span>{isRecalculating ? 'Optimizing...' : 'Recalculate Carrying Capacity Plan'}</span>
+            </button>
+          </div>
         }
       />
 
@@ -703,15 +1136,15 @@ function RelocationStrategyView({
       <div className="stats-grid" style={{ marginBottom: '24px' }}>
         <Stat
           title="Evacuees Needing Relocation"
-          value={relocationPlan ? relocationPlan.total_evacuees_needed.toLocaleString() : '0'}
+          value={activePlan ? activePlan.total_evacuees_needed.toLocaleString() : '0'}
           detail="Across Red & Buffer zones"
           icon={Flag}
           tone="orange"
         />
         <Stat
           title="Successfully Allocated"
-          value={relocationPlan ? relocationPlan.total_allocated.toLocaleString() : '0'}
-          detail={relocationPlan ? `${((relocationPlan.total_allocated / Math.max(1, relocationPlan.total_evacuees_needed)) * 100).toFixed(1)}% Capacity Match` : ''}
+          value={activePlan ? activePlan.total_allocated.toLocaleString() : '0'}
+          detail={activePlan ? `${((activePlan.total_allocated / Math.max(1, activePlan.total_evacuees_needed)) * 100).toFixed(1)}% Capacity Match` : ''}
           icon={ShieldCheck}
           tone="green"
         />
@@ -773,7 +1206,7 @@ function RelocationStrategyView({
             </thead>
             <tbody>
               {sites.map(s => {
-                const u = relocationPlan?.shelter_utilization.find(x => x.shelter_id === s.id)
+                const u = activePlan?.shelter_utilization.find(x => x.shelter_id === s.id)
                 const allocated = u ? u.allocated_count : 0
                 const finalOcc = s.current_occupancy + allocated
                 const pct = Math.min(100, Math.round((finalOcc / Math.max(1, s.max_capacity)) * 100))
@@ -808,12 +1241,12 @@ function RelocationStrategyView({
         </div>
       </section>
 
-      {/* AI Allocation Matrix Table */}
+      {/* AI Allocation Matrix Table with Interactive Reallocate Action */}
       <section className="panel full-panel">
         <div className="panel-header">
           <div>
             <h2>AI-Recommended Habitation &rarr; Shelter Allocation Matrix</h2>
-            <p>Calculated via multi-objective optimization minimizing distance and matching medical infrastructure</p>
+            <p>Calculated via multi-objective optimization minimizing distance and matching medical infrastructure. Click Reallocate to adjust destination.</p>
           </div>
         </div>
         <div className="table-scroll">
@@ -825,10 +1258,11 @@ function RelocationStrategyView({
                 <th>Evacuees Allocated</th>
                 <th>Transit Distance</th>
                 <th>Medical Priority Matched</th>
+                <th style={{ textAlign: 'center' }}>Action / Reallocate</th>
               </tr>
             </thead>
             <tbody>
-              {relocationPlan?.allocations.map((a, idx) => (
+              {activePlan?.allocations.map((a, idx) => (
                 <tr key={idx}>
                   <td><strong>{a.habitation_name}</strong><span className="cell-sub">Threatened Habitation</span></td>
                   <td><strong>{a.shelter_name}</strong></td>
@@ -841,15 +1275,48 @@ function RelocationStrategyView({
                       <span className="cell-sub">Standard Shelter</span>
                     )}
                   </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setReallocatingItem(a)}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '4px',
+                        background: '#e0f2fe',
+                        color: '#0369a1',
+                        border: '1px solid #bae6fd',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}
+                      title="Reassign this habitation to another shelter with live capacity check"
+                    >
+                      <Shuffle size={12} />
+                      <span>Reallocate</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
-              {(!relocationPlan || relocationPlan.allocations.length === 0) && (
-                <tr><td colSpan={5} className="text-center py-4">No active allocations generated.</td></tr>
+              {(!activePlan || activePlan.allocations.length === 0) && (
+                <tr><td colSpan={6} className="text-center py-4">No active allocations generated.</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </section>
+
+      {/* Interactive Reallocate Modal */}
+      <ReallocateModal
+        isOpen={Boolean(reallocatingItem)}
+        onClose={() => setReallocatingItem(null)}
+        allocation={reallocatingItem}
+        shelters={sites}
+        onConfirmReallocation={handleConfirmReallocation}
+      />
     </div>
   )
 }
@@ -877,7 +1344,7 @@ function DataPage({
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<'DDMO' | 'ADMIN'>('DDMO')
+  const [role, setRole] = useState<'DDMO' | 'ADMIN' | 'SDMA'>('DDMO')
   const [assignedDistrictId, setAssignedDistrictId] = useState<string>('')
   const [designation, setDesignation] = useState('')
   const [phone, setPhone] = useState('')
@@ -908,7 +1375,7 @@ function DataPage({
         full_name: fullName.trim(),
         password,
         role,
-        designation: designation.trim() || (role === 'DDMO' ? 'District Disaster Management Officer' : 'National Administrator'),
+        designation: designation.trim() || (role === 'DDMO' ? 'District Disaster Management Officer' : role === 'SDMA' ? 'State Relief Commissioner / SEOC Director' : 'National Administrator'),
         phone: phone.trim() || null,
         assigned_district_id: role === 'DDMO' && assignedDistrictId ? Number(assignedDistrictId) : null,
       }
@@ -930,7 +1397,7 @@ function DataPage({
       setShowAddModal(false)
 
       const districtObj = safeDistricts.find(d => String(d.id) === String(assignedDistrictId))
-      const assignedLabel = role === 'DDMO' ? (districtObj ? `District: ${districtObj.name}` : 'District Officer') : 'National Admin'
+      const assignedLabel = role === 'DDMO' ? (districtObj ? `District: ${districtObj.name}` : 'District Officer') : role === 'SDMA' ? 'Uttarakhand SDMA (Statewide)' : 'National Admin'
       setSuccessToast(`Officer account successfully created for ${body.full_name} (${assignedLabel})!`)
       setTimeout(() => setSuccessToast(null), 5000)
 
@@ -1040,13 +1507,17 @@ function DataPage({
                           <span className="code-chip" style={{ background: '#e0f2fe', color: '#0369a1' }}>
                             🏛️ National / All Districts
                           </span>
+                        ) : r.role === 'SDMA' ? (
+                          <span className="code-chip" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                            🏔️ Uttarakhand / State Command (USDMA)
+                          </span>
                         ) : (
                           <span className="text-gray-400 text-xs">Unassigned</span>
                         )}
                       </td>
                       <td>
                         <span style={{ fontSize: '12px', color: '#334155' }}>
-                          {r.designation || (r.role === 'ADMIN' ? 'National Administrator' : 'District Officer')}
+                          {r.designation || (r.role === 'ADMIN' ? 'National Administrator' : r.role === 'SDMA' ? 'State Relief Commissioner / SEOC Director' : 'District Officer')}
                         </span>
                       </td>
                       <td>
@@ -1143,11 +1614,12 @@ function DataPage({
                     <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#334155', marginBottom: '4px' }}>Role / Command Level *</label>
                     <select
                       value={role}
-                      onChange={(e) => setRole(e.target.value as 'DDMO' | 'ADMIN')}
+                      onChange={(e) => setRole(e.target.value as 'DDMO' | 'ADMIN' | 'SDMA')}
                       style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', boxSizing: 'border-box' }}
                     >
-                      <option value="DDMO">District Officer (DDMO)</option>
-                      <option value="ADMIN">System Administrator (HQ)</option>
+                      <option value="DDMO">District Officer (DDMO - Dehradun / Regional)</option>
+                      <option value="SDMA">State Authority (SDMA - Uttarakhand USDMA)</option>
+                      <option value="ADMIN">System Administrator (HQ - National NDMA)</option>
                     </select>
                   </div>
 
@@ -1168,9 +1640,13 @@ function DataPage({
                           </option>
                         ))}
                       </select>
+                    ) : role === 'SDMA' ? (
+                      <div style={{ padding: '8px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', color: '#0369a1', fontWeight: 600, boxSizing: 'border-box' }}>
+                        🏔️ Uttarakhand Statewide (SEOC Dehradun)
+                      </div>
                     ) : (
                       <div style={{ padding: '8px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', color: '#64748b', boxSizing: 'border-box' }}>
-                        All Districts (National Oversight)
+                        🏛️ All Districts (National Oversight)
                       </div>
                     )}
                   </div>
@@ -1183,7 +1659,7 @@ function DataPage({
                       type="text"
                       value={designation}
                       onChange={(e) => setDesignation(e.target.value)}
-                      placeholder={role === 'DDMO' ? 'District Disaster Mgmt Officer' : 'National Administrator'}
+                      placeholder={role === 'DDMO' ? 'District Disaster Mgmt Officer' : role === 'SDMA' ? 'State Relief Commissioner / SEOC Director' : 'National Administrator'}
                       style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
                     />
                   </div>
@@ -1240,7 +1716,15 @@ export default function Home() {
   const [users, setUsers] = useState<User[]>([])
   const [alerts, setAlerts] = useState<AlertItem[]>([])
   const [relocationPlan, setRelocationPlan] = useState<RelocationPlan | null>(null)
+  const [ndrfAlerts, setNdrfAlerts] = useState<NDRFAlertRecord[]>([])
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('expanded')
+
+  // Feature Modal States
+  const [inspectedSettlement, setInspectedSettlement] = useState<Settlement | null>(null)
+  const [showEvacOrderModal, setShowEvacOrderModal] = useState(false)
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false)
+  const [showNDRFModal, setShowNDRFModal] = useState(false)
+  const [ndrfTargetSettlements, setNdrfTargetSettlements] = useState<Settlement[]>([])
 
   const handleToggleShrink = () => {
     setSidebarMode(prev => {
@@ -1278,12 +1762,13 @@ export default function Home() {
 
   const reloadAllData = async () => {
     try {
-      const [sData, dData, rData, aData, pData] = await Promise.all([
+      const [sData, dData, rData, aData, pData, ndrfData] = await Promise.all([
         fetchApi<Settlement[]>('/settlements/'),
         fetchApi<District[]>('/districts'),
         fetchApi<RelocationSite[]>('/relocation-sites/'),
         fetchApi<AlertItem[]>('/analytics/alerts'),
-        fetchApi<RelocationPlan>('/analytics/relocation-plan')
+        fetchApi<RelocationPlan>('/analytics/relocation-plan'),
+        fetchApi<{ count: number; alerts: NDRFAlertRecord[] }>('/ndrf/alerts').catch(() => ({ count: 0, alerts: [] }))
       ])
 
       setSettlements(sData || [])
@@ -1291,13 +1776,22 @@ export default function Home() {
       setSites(rData || [])
       setAlerts(aData || [])
       setRelocationPlan(pData || null)
+      setNdrfAlerts(ndrfData?.alerts || [])
 
-      if (user?.role === 'ADMIN') {
+      if (user?.role === 'ADMIN' || user?.role === 'SDMA') {
         await reloadUsers()
       }
     } catch (err: any) {
       console.error("Error refreshing dashboard data:", err)
     }
+  }
+
+  const handleOpenNDRFModal = (targetList?: Settlement[]) => {
+    const list = targetList && targetList.length > 0 
+      ? targetList 
+      : settlements.filter(s => s.current_hazard_status === 'RED')
+    setNdrfTargetSettlements(list.length > 0 ? list : settlements.slice(0, 1))
+    setShowNDRFModal(true)
   }
 
   useEffect(() => {
@@ -1315,7 +1809,7 @@ export default function Home() {
 
         await reloadAllData()
 
-        if (me.role === 'ADMIN') {
+        if (me.role === 'ADMIN' || me.role === 'SDMA') {
           await reloadUsers()
         }
       } catch (err: any) {
@@ -1338,10 +1832,10 @@ export default function Home() {
       setSimulating(true)
       const res = await fetchApi<any>('/analytics/simulate-hazard', {
         method: 'POST',
-        body: JSON.stringify({ scenario: 'cloudburst', rainfall_mm_per_hr: 135.0 })
+        body: JSON.stringify({ scenario: 'cloudburst', rainfall_mm_per_hr: 120.0 })
       })
 
-      setSimNotice(`Cloudburst simulated (135 mm/hr). AI escalated ${res.escalated_settlements?.length || 4} habitations into RED Zone!`)
+      setSimNotice(`🚨 CRITICAL: Cloudburst Surge (120 mm/hr) simulated! Multi-hazard AI upgraded ${res.escalated_settlements?.length || 5} habitations to RED Zone (IMMEDIATE evacuation).`)
       await reloadAllData()
     } catch (err) {
       console.error("Simulation failed:", err)
@@ -1378,15 +1872,21 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      <Header
-        menu={() => setOpen(true)}
-        user={user}
-        onSimulate={handleSimulateCloudburst}
-        onReset={handleResetSimulation}
-        simulating={simulating}
-        sidebarMode={sidebarMode}
-        onToggleSidebar={handleCycleSidebar}
-      />
+      <div className="sticky-header-container">
+        <GovUtilityBar />
+        <Header
+          menu={() => setOpen(true)}
+          user={user}
+          onSimulate={handleSimulateCloudburst}
+          onReset={handleResetSimulation}
+          simulating={simulating}
+          sidebarMode={sidebarMode}
+          onToggleSidebar={handleCycleSidebar}
+          onOpenBroadcast={() => setShowBroadcastModal(true)}
+          ndrfAlertCount={ndrfAlerts.filter(a => a.status !== 'COMPLETED').length}
+          onNavigateNDRF={() => setPage('NDRF Battalion Ops')}
+        />
+      </div>
       <Sidebar
         page={page}
         setPage={setPage}
@@ -1394,6 +1894,7 @@ export default function Home() {
         close={() => setOpen(false)}
         redZoneCount={redZoneCount}
         userRole={user?.role}
+        ndrfAlertCount={ndrfAlerts.filter(a => a.status !== 'COMPLETED').length}
         mode={sidebarMode}
         onToggleShrink={handleToggleShrink}
         onToggleHide={handleToggleHide}
@@ -1421,12 +1922,18 @@ export default function Home() {
             sites={sites}
             alerts={alerts}
             simNotice={simNotice}
+            onInspectXAI={(s) => setInspectedSettlement(s)}
+            onOpenEvacOrder={() => setShowEvacOrderModal(true)}
+            onOpenBroadcast={() => setShowBroadcastModal(true)}
+            onAlertNDRF={(targets) => handleOpenNDRFModal(targets)}
           />
         ) : page === 'Hazard Red Zones' ? (
           <Hazards
             settlements={settlements}
             sites={sites}
             userDistrictName={user?.assigned_district_name}
+            onInspectXAI={(s) => setInspectedSettlement(s)}
+            onAlertNDRF={(targets) => handleOpenNDRFModal(targets)}
           />
         ) : page === 'Relocation Strategy' ? (
           <RelocationStrategyView
@@ -1435,6 +1942,16 @@ export default function Home() {
             userDistrictName={user?.assigned_district_name}
             relocationPlan={relocationPlan}
             onRefreshPlan={reloadAllData}
+            onOpenEvacOrder={() => setShowEvacOrderModal(true)}
+          />
+        ) : page === 'NDRF Battalion Ops' ? (
+          <NDRFBattalionView
+            alerts={ndrfAlerts}
+            onRefreshAlerts={reloadAllData}
+            onOpenNewAlertModal={() => handleOpenNDRFModal()}
+            onNavigateToRelocationStrategy={() => setPage('Relocation Strategy')}
+            userRole={user?.role}
+            userDistrictName={user?.assigned_district_name}
           />
         ) : (
           <DataPage
@@ -1446,6 +1963,55 @@ export default function Home() {
           />
         )}
       </main>
+
+      {/* 1. Explainable AI (XAI) "Why is this a Red Zone?" Inspection Modal */}
+      {inspectedSettlement && (
+        <XAIModal
+          settlement={inspectedSettlement}
+          onClose={() => setInspectedSettlement(null)}
+          onOpenEvacuationPlan={() => {
+            setInspectedSettlement(null)
+            setPage('Relocation Strategy')
+          }}
+          onAlertNDRF={(s) => handleOpenNDRFModal([s as Settlement])}
+        />
+      )}
+
+      {/* 2. Official District Evacuation Order (SDMA PDF & Manifest under DM Act 2005) Modal */}
+      <EvacuationOrderModal
+        isOpen={showEvacOrderModal}
+        onClose={() => setShowEvacOrderModal(false)}
+        districtName={user?.assigned_district_name || 'DEHRADUN'}
+        allocations={relocationPlan?.allocations || []}
+        shelters={sites}
+        totalEvacuees={relocationPlan?.total_allocated || 0}
+        onAlertNDRF={() => handleOpenNDRFModal(settlements.filter(s => s.current_hazard_status === 'RED'))}
+      />
+
+      {/* 3. Bilingual Citizen Alert Dispatcher (Common Alerting Protocol - CAP) Modal */}
+      <CitizenBroadcastModal
+        isOpen={showBroadcastModal}
+        onClose={() => setShowBroadcastModal(false)}
+        affectedHabitations={settlements.filter(s => s.current_hazard_status === 'RED').map(s => s.name)}
+        primaryShelterName={sites[0]?.name || 'Raipur Sports Complex Staging Camp'}
+      />
+
+      {/* 4. NDRF Battalion Red Zone Confirmation & Tactical Mobilization Modal */}
+      <NDRFAlertModal
+        isOpen={showNDRFModal}
+        onClose={() => setShowNDRFModal(false)}
+        settlements={ndrfTargetSettlements}
+        shelters={sites}
+        userDistrictName={user?.assigned_district_name || 'DEHRADUN'}
+        userRole={user?.role || 'DDMO'}
+        userFullName={user?.full_name || 'District Magistrate'}
+        onAlertDispatched={async () => {
+          await reloadAllData()
+        }}
+        onOpenNDRFConsole={() => {
+          setPage('NDRF Battalion Ops')
+        }}
+      />
     </div>
   )
 }

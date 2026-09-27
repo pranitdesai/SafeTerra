@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     # ── Demo Credentials (for seeding only) ─────────────────
     DEMO_ADMIN_EMAIL: str = "admin@kavach.gov.in"
     DEMO_ADMIN_PASSWORD: str = "KavachAdmin@2026"
+    DEMO_SDMA_EMAIL: str = "sdma.uttarakhand@kavach.gov.in"
+    DEMO_SDMA_PASSWORD: str = "KavachSDMA@2026"
     DEMO_DDMO_EMAIL: str = "ddmo.dehradun@kavach.gov.in"
     DEMO_DDMO_PASSWORD: str = "KavachDDMO@2026"
 

@@ -287,27 +287,29 @@ export function MapCanvas({
   const routesGeoJSON: any = useMemo(() => {
     if (!showRoutes || roadRoutes.length === 0) return null
 
-    const features = roadRoutes.map((route, idx) => {
-      const path = route.roadPositions || route.positions
-      // Each point in path is [lat, lon], convert to [lon, lat] for GeoJSON
-      const coordinates = path
-        .map(pt => [Number(pt[1]), Number(pt[0])] as [number, number])
-        .filter(c => !isNaN(c[0]) && !isNaN(c[1]))
+    const features = roadRoutes
+      .map((route, idx) => {
+        const path = route.roadPositions || route.positions
+        // Each point in path is [lat, lon], convert to [lon, lat] for GeoJSON
+        const coordinates = (path || [])
+          .map(pt => [Number(pt[1]), Number(pt[0])] as [number, number])
+          .filter(c => !isNaN(c[0]) && !isNaN(c[1]))
 
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates
-        },
-        properties: {
-          index: idx,
-          from: route.from,
-          to: route.to,
-          isPrimary: idx === 0
+        return {
+          type: 'Feature' as const,
+          geometry: {
+            type: 'LineString' as const,
+            coordinates
+          },
+          properties: {
+            index: idx,
+            from: route.from,
+            to: route.to,
+            isPrimary: idx === 0
+          }
         }
-      }
-    })
+      })
+      .filter(f => f.geometry.coordinates.length >= 2)
 
     return {
       type: 'FeatureCollection',
@@ -323,7 +325,9 @@ export function MapCanvas({
         height: '100%',
         minHeight: '620px',
         position: 'relative',
-        background: '#0a0f1d'
+        background: '#0a0f1d',
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
       <Map
@@ -337,7 +341,7 @@ export function MapCanvas({
           bearing: 0
         }}
         mapStyle={mapStyle}
-        style={{ width: '100%', height: '100%' }}
+        style={{ width: '100%', height: '100%', minHeight: '620px', flex: 1 }}
         onLoad={() => {
           setMapLoaded(true)
           if (is3D && mapRef.current) {
@@ -391,8 +395,7 @@ export function MapCanvas({
               type="line"
               paint={{
                 'line-color': ['get', 'color'],
-                'line-width': ['match', ['get', 'status'], 'RED', 3.5, 2.0],
-                'line-dasharray': ['match', ['get', 'status'], 'RED', [1, 0], [2, 2]]
+                'line-width': ['match', ['get', 'status'], 'RED', 3.5, 2.0]
               }}
             />
           </Source>
@@ -439,8 +442,8 @@ export function MapCanvas({
               type="line"
               layout={{ 'line-join': 'round', 'line-cap': 'round' }}
               paint={{
-                'line-color': ['case', ['get', 'isPrimary'], '#38bdf8', '#0284c7'],
-                'line-width': ['case', ['get', 'isPrimary'], 4.5, 3.5],
+                'line-color': ['case', ['==', ['get', 'isPrimary'], true], '#38bdf8', '#0284c7'],
+                'line-width': ['case', ['==', ['get', 'isPrimary'], true], 4.5, 3.5],
                 'line-opacity': 0.95
               }}
             />
@@ -466,6 +469,7 @@ export function MapCanvas({
               onClick={(e: any) => {
                 e.originalEvent.stopPropagation()
                 setPopupInfo(point)
+                onSelectPoint?.(point)
               }}
             >
               <div
@@ -609,6 +613,25 @@ export function MapCanvas({
                   <div style={{ marginTop: '4px', fontSize: '10px', color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
                     Identified via multi-factor terrain slope, soil moisture & rainfall susceptibility.
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelectPoint?.(popupInfo)}
+                    style={{
+                      marginTop: '6px',
+                      padding: '5px 8px',
+                      borderRadius: '4px',
+                      background: '#1c5d8c',
+                      color: '#ffffff',
+                      border: 0,
+                      fontSize: '10px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      width: '100%',
+                      textAlign: 'center'
+                    }}
+                  >
+                    🔍 Explainable AI (XAI) Factors
+                  </button>
                 </div>
               ) : (
                 <div style={{ fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '4px' }}>

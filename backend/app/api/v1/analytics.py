@@ -251,15 +251,24 @@ async def simulate_hazard(
             if "Village" in s.name or "Maldevta" in s.name or "Sahastradhara" in s.name:
                 s.current_hazard_status = "RED"
                 s.priority_level = "IMMEDIATE"
-                s.risk_score = 88.0
+                s.risk_score = 88.5 if "Village" in s.name else 91.2 if "Maldevta" in s.name else 84.0
+                s.vulnerability_score = 82.0 if "Village" in s.name else 89.0 if "Maldevta" in s.name else 79.5
+                s.road_access = False if "Maldevta" in s.name else True
             elif "Mussoorie" in s.name or "Barkot" in s.name or "Kalsi" in s.name or "Sundarpur" in s.name:
                 s.current_hazard_status = "BUFFER"
-                s.priority_level = "SHORT_TERM"
-                s.risk_score = 62.0
+                s.priority_level = "SHORT_TERM" if "Sundarpur" not in s.name else "MEDIUM_TERM"
+                s.risk_score = 67.5 if "Mussoorie" in s.name else 62.0 if "Barkot" in s.name else 58.0 if "Kalsi" in s.name else 54.0
+                s.vulnerability_score = 62.0 if "Mussoorie" in s.name else 58.0 if "Barkot" in s.name else 55.0 if "Kalsi" in s.name else 49.0
+                s.road_access = True
             else:
                 s.current_hazard_status = "SAFE"
                 s.priority_level = "MONITOR"
-                s.risk_score = 22.0
+                s.risk_score = 24.0 if "Doiwala" in s.name else 18.5 if "Vikasnagar" in s.name else 28.0
+                s.vulnerability_score = 22.0 if "Doiwala" in s.name else 19.0 if "Vikasnagar" in s.name else 26.0
+                s.road_access = True
+
+        # Clear simulated alerts from transient queue
+        LIVE_ALERTS[:] = [a for a in LIVE_ALERTS if not str(a.get("id", "")).startswith("alt-sim-")]
 
         await db.commit()
         return {
@@ -271,18 +280,18 @@ async def simulate_hazard(
     # Simulate Cloudburst / Monsoon Surge
     updated_names = []
     for s in all_settlements:
-        # If specific IDs provided or default top settlements
+        # If specific IDs provided or default top settlements in Himalayan catchment
         should_escalate = (
             (request.affected_settlement_ids and s.id in request.affected_settlement_ids) or
-            ("Maldevta" in s.name or "Sahastradhara" in s.name or "Mussoorie" in s.name or "Kholi" in s.name)
+            ("Maldevta" in s.name or "Sahastradhara" in s.name or "Mussoorie" in s.name or "Kholi" in s.name or "Barkot" in s.name)
         )
 
         if should_escalate:
             env = EnvironmentalTelemetry(
                 rainfall_mm_per_hr=request.rainfall_mm_per_hr,
                 slope_angle_degrees=36.0,
-                ndvi_vegetation_index=0.32,
-                ndwi_water_index=0.48,
+                ndvi_vegetation_index=0.30,
+                ndwi_water_index=0.52,
                 past_landslide_events=2,
             )
             demo = DemographicProfile(

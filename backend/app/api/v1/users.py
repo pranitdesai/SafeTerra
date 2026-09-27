@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_admin
+from app.api.deps import get_current_user, require_state_or_admin
 from app.core.security import hash_password
 from app.db.session import get_db
 from app.models.administrative import District
@@ -27,11 +27,11 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 @router.get("/", response_model=UserListResponse, include_in_schema=False)
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
-    _admin: Annotated[User, Depends(require_admin)],
+    _admin: Annotated[User, Depends(require_state_or_admin)],
     page: int = 1,
     page_size: int = 20,
 ):
-    """List all users (admin only)."""
+    """List all users (SDMA or Admin)."""
     offset = (page - 1) * page_size
 
     # Count
@@ -79,9 +79,9 @@ async def create_user(
     body: UserCreate,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(require_admin)],
+    admin: Annotated[User, Depends(require_state_or_admin)],
 ):
-    """Create a new user (admin only)."""
+    """Create a new user (SDMA or Admin)."""
     # Check duplicate email
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
@@ -109,7 +109,7 @@ async def create_user(
         action="USER_CREATED",
         entity_type="User",
         entity_id=user.id,
-        description=f"Admin created user {user.email} with role {user.role.value}",
+        description=f"{admin.role.value} created user {user.email} with role {user.role.value}",
         ip_address=request.client.host if request.client else None,
     )
     db.add(audit)
@@ -140,9 +140,9 @@ async def create_user(
 async def get_user(
     user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _admin: Annotated[User, Depends(require_admin)],
+    _admin: Annotated[User, Depends(require_state_or_admin)],
 ):
-    """Get a specific user by ID (admin only)."""
+    """Get a specific user by ID (SDMA or Admin)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -171,9 +171,9 @@ async def update_user(
     body: UserUpdate,
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[User, Depends(require_admin)],
+    admin: Annotated[User, Depends(require_state_or_admin)],
 ):
-    """Update a user (admin only)."""
+    """Update a user (SDMA or Admin)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:

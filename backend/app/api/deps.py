@@ -72,5 +72,7 @@ def require_role(*roles: UserRole):
 # ── Convenience Aliases ─────────────────────────────────────
 
 require_admin = require_role(UserRole.ADMIN)
+require_sdma = require_role(UserRole.SDMA)
 require_ddmo = require_role(UserRole.DDMO)
-require_admin_or_ddmo = require_role(UserRole.ADMIN, UserRole.DDMO)
+require_state_or_admin = require_role(UserRole.ADMIN, UserRole.SDMA)
+require_admin_or_ddmo = require_role(UserRole.ADMIN, UserRole.SDMA, UserRole.DDMO)

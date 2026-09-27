@@ -70,9 +70,9 @@ class MultiHazardMLEngine:
         factors: List[str] = []
 
         # ── 1. Physical Hazard Intensity (H) [0–100] ───────────────
-        # Slope factor: slopes > 30 degrees have steep non-linear landslide probability
-        slope_factor = min(1.0, max(0.0, (env.slope_angle_degrees - 10.0) / 35.0))
-        if env.slope_angle_degrees >= 32.0:
+        # Slope factor: slopes > 25 degrees in Himalayan debris have steep non-linear landslide probability
+        slope_factor = min(1.0, max(0.0, (env.slope_angle_degrees - 10.0) / 25.0))
+        if env.slope_angle_degrees >= 30.0:
             factors.append(f"Steep Terrain Gradient: {env.slope_angle_degrees:.1f}°")
 
         # Rainfall factor: > 60mm/hr is cloudburst threshold in Himalayas
@@ -102,7 +102,7 @@ class MultiHazardMLEngine:
 
         # ── 2. Demographic Vulnerability (V) [0–100] ───────────────
         vuln_ratio = demo.vulnerable_population / max(1, demo.total_population)
-        if vuln_ratio >= 0.30:
+        if vuln_ratio >= 0.25:
             factors.append(f"High Vulnerable Demographic ({vuln_ratio * 100.0:.1f}% children/elderly/disabled)")
 
         density_scale = min(1.0, demo.total_population / 1500.0)
@@ -130,7 +130,7 @@ class MultiHazardMLEngine:
         composite_risk = round(min(100.0, max(0.0, composite_risk)), 1)
 
         # ── 5. Classification & Prioritization ────────────────────
-        if composite_risk >= 75.0 or (hazard_intensity >= 80.0 and road_cut > 0):
+        if composite_risk >= 68.0 or (hazard_intensity >= 75.0 and road_cut > 0) or hazard_intensity >= 84.0:
             status = "RED"
             priority = "IMMEDIATE"
         elif composite_risk >= 50.0:

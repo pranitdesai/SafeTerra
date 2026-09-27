@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { fetchApi, setAuthToken } from '../../lib/api';
 
-type PortalRole = 'ADMIN' | 'DISTRICT';
+type PortalRole = 'ADMIN' | 'SDMA' | 'DISTRICT';
 
 export default function LoginPage() {
   const [role, setRole] = useState<PortalRole>('ADMIN');
@@ -36,6 +36,9 @@ export default function LoginPage() {
     if (newRole === 'ADMIN') {
       setEmail('admin@kavach.gov.in');
       setPassword('KavachAdmin@2026');
+    } else if (newRole === 'SDMA') {
+      setEmail('sdma.uttarakhand@kavach.gov.in');
+      setPassword('KavachSDMA@2026');
     } else {
       setEmail('ddmo.dehradun@kavach.gov.in');
       setPassword('KavachDDMO@2026');
@@ -78,16 +81,16 @@ export default function LoginPage() {
       {/* Top Government Strip */}
       <div className="bg-white border-b border-gray-200 py-2 px-4 md:px-8 text-xs text-gray-600 flex justify-between items-center shadow-xs">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-800">भारत सरकार</span>
+          <span className="font-semibold text-gray-800">भारत सरकार • उत्तराखंड शासन</span>
           <span className="text-gray-300">|</span>
-          <span>Government of India</span>
+          <span>Government of India & Govt. of Uttarakhand</span>
         </div>
         <div className="hidden sm:flex items-center gap-2 text-gray-500 text-[11px]">
           <span>गृह मंत्रालय</span>
           <span>•</span>
-          <span>Ministry of Home Affairs (MHA)</span>
+          <span>NDMA / USDMA / DDMA</span>
           <span>•</span>
-          <span className="font-medium text-blue-900">NDRF & DM Division</span>
+          <span className="font-medium text-blue-900">NDRF 8th BN & SDRF Division</span>
         </div>
       </div>
 
@@ -113,13 +116,13 @@ export default function LoginPage() {
             {/* Official Government Hierarchy Names */}
             <div className="space-y-0.5">
               <h2 className="text-base md:text-lg font-bold text-gray-900 tracking-tight">
-                राष्ट्रीय आपदा प्रबंधन प्राधिकरण
+                राष्ट्रीय एवं राज्य आपदा प्रबंधन प्राधिकरण
               </h2>
               <h1 className="text-sm md:text-base font-semibold text-gray-800">
-                National Disaster Management Authority
+                National (NDMA) • Uttarakhand State (USDMA) • District (DDMA)
               </h1>
               <p className="text-xs text-gray-500 font-medium">
-                गृह मंत्रालय, भारत सरकार | Ministry of Home Affairs, Govt. of India
+                Integrated Disaster Decision Support System • Uttarakhand Pilot: Dehradun
               </p>
             </div>
 
@@ -133,27 +136,45 @@ export default function LoginPage() {
           </div>
 
           <div className="p-6 md:p-8">
-            {/* Separate Option for District and Admin */}
+            {/* 3-Way Selector for National, State (Uttarakhand SDMA), and District (DDMA Dehradun) */}
             <div className="mb-6">
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2.5 text-center">
-                Select Login Level / Role
+                Select Administrative Command Level
               </label>
-              <div className="grid grid-cols-2 gap-3 p-1 bg-gray-100/90 rounded-lg border border-gray-200">
+              <div className="grid grid-cols-3 gap-2 p-1 bg-gray-100/90 rounded-lg border border-gray-200">
                 {/* Admin Tab Option */}
                 <button
                   type="button"
                   onClick={() => handleRoleChange('ADMIN')}
-                  className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-md text-xs font-semibold transition-all ${role === 'ADMIN'
+                  className={`flex flex-col items-center justify-center py-2 px-2 rounded-md text-xs font-semibold transition-all ${role === 'ADMIN'
                     ? 'bg-blue-800 text-white shadow-sm ring-1 ring-blue-900'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
                     }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Landmark className="w-4 h-4" />
-                    <span className="text-sm">National / Admin</span>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <Landmark className="w-3.5 h-3.5" />
+                    <span className="text-xs">NDMA HQ</span>
                   </div>
-                  <span className={`text-[10px] font-normal ${role === 'ADMIN' ? 'text-blue-200' : 'text-gray-500'}`}>
-                    NDMA HQ & Central Command
+                  <span className={`text-[9.5px] font-normal ${role === 'ADMIN' ? 'text-blue-200' : 'text-gray-500'}`}>
+                    National Command
+                  </span>
+                </button>
+
+                {/* SDMA Tab Option - Uttarakhand */}
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange('SDMA')}
+                  className={`flex flex-col items-center justify-center py-2 px-2 rounded-md text-xs font-semibold transition-all ${role === 'SDMA'
+                    ? 'bg-blue-800 text-white shadow-sm ring-1 ring-blue-900'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
+                    }`}
+                >
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span className="text-xs">USDMA (State)</span>
+                  </div>
+                  <span className={`text-[9.5px] font-normal ${role === 'SDMA' ? 'text-blue-200' : 'text-gray-500'}`}>
+                    Uttarakhand SEOC
                   </span>
                 </button>
 
@@ -161,17 +182,17 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => handleRoleChange('DISTRICT')}
-                  className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-md text-xs font-semibold transition-all ${role === 'DISTRICT'
+                  className={`flex flex-col items-center justify-center py-2 px-2 rounded-md text-xs font-semibold transition-all ${role === 'DISTRICT'
                     ? 'bg-blue-800 text-white shadow-sm ring-1 ring-blue-900'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/60'
                     }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Building2 className="w-4 h-4" />
-                    <span className="text-sm">District Portal</span>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span className="text-xs">DDMA Dehradun</span>
                   </div>
-                  <span className={`text-[10px] font-normal ${role === 'DISTRICT' ? 'text-blue-200' : 'text-gray-500'}`}>
-                    DDMO & District DEOC
+                  <span className={`text-[9.5px] font-normal ${role === 'DISTRICT' ? 'text-blue-200' : 'text-gray-500'}`}>
+                    District DEOC
                   </span>
                 </button>
               </div>
@@ -180,20 +201,29 @@ export default function LoginPage() {
             {/* Context Badge for Selected Role */}
             <div className={`mb-5 p-3 rounded-lg border text-xs flex items-start gap-2.5 ${role === 'ADMIN'
               ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+              : role === 'SDMA'
+              ? 'bg-blue-50/70 border-blue-200 text-blue-900'
               : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
               }`}>
               {role === 'ADMIN' ? (
                 <>
                   <Shield className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">National Administrative Console:</span> Full authority over national hazard modeling, inter-state NDRF battalion mobilization, and national warning dissemination.
+                    <span className="font-bold">National Administrative Console (NDMA):</span> Full authority over national hazard telemetry, inter-state NDRF battalion mobilization, and central disaster relief guidelines.
+                  </div>
+                </>
+              ) : role === 'SDMA' ? (
+                <>
+                  <Landmark className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Uttarakhand State Disaster Management Authority (USDMA):</span> State-level command & State Emergency Operations Centre (SEOC) Dehradun. Coordinates all 13 districts, SDRF deployment, and NDRF 8th BN mobilization for Uttarakhand.
                   </div>
                 </>
               ) : (
                 <>
                   <MapPin className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">District Emergency Operations Centre (DEOC):</span> Local jurisdiction monitoring for Dehradun District, block-level evacuation SOPs, and field rescue resources.
+                    <span className="font-bold">District Emergency Operations Centre (DEOC - Dehradun):</span> Local jurisdiction monitoring for Dehradun District, block-level evacuation manifests, and municipal relief shelters.
                   </div>
                 </>
               )}
@@ -213,7 +243,11 @@ export default function LoginPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  {role === 'ADMIN' ? 'National Administrator Email / Gov ID' : 'District Officer (DDMO) Email / Gov ID'}
+                  {role === 'ADMIN' 
+                    ? 'National Administrator Email / Gov ID' 
+                    : role === 'SDMA'
+                    ? 'Uttarakhand State (USDMA / SEOC) Email / Gov ID'
+                    : 'District Officer (DDMO Dehradun) Email / Gov ID'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">

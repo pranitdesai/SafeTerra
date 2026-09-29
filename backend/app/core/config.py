@@ -35,22 +35,48 @@ class Settings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        """Ensure connection string uses the asyncpg driver."""
+        """Ensure connection string uses the asyncpg driver and clean params."""
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
         url = self.DATABASE_URL
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        try:
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            needs_ssl = "sslmode" in qs or "ssl" in qs
+            qs.pop("sslmode", None)
+            qs.pop("channel_binding", None)
+            if needs_ssl:
+                qs["ssl"] = ["require"]
+            new_query = urlencode(qs, doseq=True)
+            url = urlunparse(parsed._replace(query=new_query))
+        except Exception:
+            pass
         return url
 
     @property
     def sync_database_url(self) -> str:
         """Ensure connection string uses psycopg2 for sync/migrations."""
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
         url = self.DATABASE_URL_SYNC or self.DATABASE_URL
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg2://", 1)
         elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg2://"):
             url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+        try:
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            qs.pop("channel_binding", None)
+            new_query = urlencode(qs, doseq=True)
+            url = urlunparse(parsed._replace(query=new_query))
+        except Exception:
+            pass
         return url
 
     # ── Security ────────────────────────────────────────────

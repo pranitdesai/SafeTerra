@@ -1,5 +1,5 @@
 """
-Kavach — Seed Data Runner
+SafeTerra — Seed Data Runner
 
 Seeds the database with initial demo data in the correct dependency order.
 Run: python -m seeds.run_seeds
@@ -50,6 +50,11 @@ async def run_all_seeds():
         # 3. Seed demo data (settlements, relocation sites, hazards)
         from seeds.seed_demo_data import seed_demo_data
         await seed_demo_data(session)
+
+        # 4. Seed NDRF Battalions and default alert
+        from seeds.seed_ndrf import seed_ndrf_battalions, seed_ndrf_default_alert
+        battalions = await seed_ndrf_battalions(session)
+        await seed_ndrf_default_alert(session, battalions)
 
         await session.commit()
         logger.info("seed_complete", status="success")

@@ -1,5 +1,5 @@
 """
-Kavach — FastAPI Application Entry Point
+SafeTerra — FastAPI Application Entry Point
 
 GIS-enabled disaster decision-support platform for SIH 26191.
 """
@@ -31,17 +31,17 @@ async def lifespan(app: FastAPI):
     """Application startup / shutdown lifecycle."""
     setup_logging(debug=settings.DEBUG)
     logger.info(
-        "kavach_startup",
+        "safeterra_startup",
         app_name=settings.APP_NAME,
         version=settings.APP_VERSION,
         debug=settings.DEBUG,
     )
     yield
-    logger.info("kavach_shutdown")
+    logger.info("safeterra_shutdown")
 
 
 app = FastAPI(
-    title="Kavach — Disaster Decision Support Portal",
+    title="SafeTerra — Disaster Decision Support Portal",
     description=(
         "Intelligent Identification of Hazard-Based Red Zones, "
         "Carrying Capacity Assessment, and Immediate Relocation Needs "

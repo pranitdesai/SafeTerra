@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useMemo, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -43,7 +43,7 @@ import {
   Truck,
   ShieldAlert
 } from 'lucide-react'
-import { KavachMap, type MapPoint, type Route } from '../components/map-view'
+import { SafeTerraMap, type MapPoint, type Route } from '../components/map-view'
 import { fetchApi, getAuthToken, removeAuthToken } from '../lib/api'
 import { XAIModal } from '../components/xai-modal'
 import { EvacuationOrderModal } from '../components/evacuation-order-modal'
@@ -456,7 +456,7 @@ function Sidebar({
             <div style={{ fontWeight: '700', marginBottom: '2px' }}>SIH PS 26191</div>
             <div>AI Relocation Platform</div>
           </div>
-          <div className="version">Kavach Portal <span>v2.4-AI</span></div>
+          <div className="version">SafeTerra Portal <span>v2.4-AI</span></div>
         </div>
       </aside>
       {open && <button className="sidebar-overlay" onClick={close} aria-label="Close navigation" />}
@@ -808,7 +808,7 @@ function MapPanel({
 
   return (
     <div className="map-panel">
-      <KavachMap
+      <SafeTerraMap
         points={hazardPoints}
         userDistrictName={userDistrictName}
         selectedPointId={selectedPointId}
@@ -1174,7 +1174,7 @@ function RelocationStrategyView({
             </div>
             <span className="route-summary">{routes.length} Active Evacuation Corridors</span>
           </div>
-          <KavachMap
+          <SafeTerraMap
             points={[...hazardPoints, ...relocationPoints]}
             routes={routes}
             showRoutes={true}
@@ -1591,7 +1591,7 @@ function DataPage({
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="ddmo@kavach.gov.in"
+                      placeholder="ddmo@safeterra.gov.in"
                       style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
                     />
                   </div>
@@ -1863,7 +1863,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 text-slate-700 font-medium">
-        Loading Kavach Decision Support Console...
+        Loading SafeTerra Decision Support Console...
       </div>
     )
   }

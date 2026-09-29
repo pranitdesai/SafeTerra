@@ -1,5 +1,5 @@
-"""
-Kavach — User Management Router
+﻿"""
+SafeTerra — User Management Router
 
 Admin-only CRUD for users and DDMO district assignment.
 """

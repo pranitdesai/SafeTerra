@@ -1,5 +1,5 @@
-"""
-Kavach — Audit Log Model
+﻿"""
+SafeTerra — Audit Log Model
 
 Records important user actions for compliance and traceability.
 """

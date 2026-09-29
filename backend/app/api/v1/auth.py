@@ -1,5 +1,5 @@
-"""
-Kavach — Authentication Router
+﻿"""
+SafeTerra — Authentication Router
 
 Handles login, token refresh, logout, and current-user retrieval.
 """

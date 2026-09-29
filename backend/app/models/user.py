@@ -1,5 +1,5 @@
-"""
-Kavach — User Model
+﻿"""
+SafeTerra — User Model
 
 Supports ADMIN and DDMO roles with district-level assignment.
 """

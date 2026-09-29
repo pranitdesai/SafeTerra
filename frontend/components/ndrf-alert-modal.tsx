@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   AlertTriangle,
   Building2,
@@ -100,17 +100,37 @@ export function NDRFAlertModal({
   const [dispatchResult, setDispatchResult] = useState<any | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (isOpen) {
+      setDispatchResult(null)
+      setSubmitError(null)
+      setIsSubmitting(false)
+      const auth = userRole === 'ADMIN' ? 'NDMA' : userRole === 'SDMA' ? 'SDMA' : 'DDMA'
+      setAuthorityLevel(auth)
+      setOfficerName(
+        userRole === 'ADMIN'
+          ? `${userFullName || 'Operations Director'} (NDMA HQ, New Delhi)`
+          : userRole === 'SDMA'
+          ? `${userFullName || 'State Relief Commissioner'} (USDMA / SEOC, Uttarakhand)`
+          : `${userFullName || 'District Magistrate'} (Chairman, DDMA ${userDistrictName || 'Dehradun'})`
+      )
+      if (shelters && shelters.length > 0) {
+        setAssignedShelterId(shelters[0].id)
+      }
+    }
+  }, [isOpen, userRole, userFullName, userDistrictName, shelters])
+
   if (!isOpen) return null
 
   // Red zones summary
   const redSettlements = settlements.length > 0 ? settlements : [
     {
-      id: 1,
+      id: 2,
       name: 'Maldevta Habitation',
-      population: 1850,
+      population: 850,
       risk_score: 91.2,
       current_hazard_status: 'RED',
-      vulnerable_population: 590,
+      vulnerable_population: 290,
       road_access: false,
     }
   ]

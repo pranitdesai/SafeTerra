@@ -1,5 +1,5 @@
-"""
-Kavach — User Schemas
+﻿"""
+SafeTerra — User Schemas
 
 Request/response models for user management.
 """

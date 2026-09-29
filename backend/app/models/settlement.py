@@ -1,5 +1,5 @@
-"""
-Kavach — Settlement Database Model
+﻿"""
+SafeTerra — Settlement Database Model
 
 Represents habitations/settlements with demographics, infrastructure indicators,
 hazard zone classification, and PostGIS geometry (Point).

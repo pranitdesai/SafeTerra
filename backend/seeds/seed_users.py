@@ -1,9 +1,9 @@
-"""
-Kavach — Seed Users
+﻿"""
+SafeTerra — Seed Users
 
 Creates deterministic demo users:
-  - Admin: admin@kavach.gov.in
-  - DDMO: ddmo.dehradun@kavach.gov.in (assigned to Dehradun)
+  - Admin: admin@safeterra.gov.in
+  - DDMO: ddmo.dehradun@safeterra.gov.in (assigned to Dehradun)
 
 Passwords are hashed at rest — never stored in plaintext.
 """

@@ -1,5 +1,5 @@
-"""
-Kavach — AI/ML Multi-Hazard Assessment Engine
+﻿"""
+SafeTerra — AI/ML Multi-Hazard Assessment Engine
 
 Simulates earth observation telemetry (Sentinel-2 MSI, Sentinel-1 C-SAR, DEM)
 and combines physical hazard intensity with demographic vulnerability and

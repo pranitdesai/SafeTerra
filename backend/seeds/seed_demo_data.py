@@ -1,5 +1,5 @@
-"""
-Kavach — Seed Demo Data (Settlements, Relocation Sites, Hazards)
+﻿"""
+SafeTerra — Seed Demo Data (Settlements, Relocation Sites, Hazards)
 
 Seeds realistic habitations, safer alternative shelters, and hazard zones
 in Dehradun District, Uttarakhand for SIH Problem Statement 26191.

@@ -1,5 +1,5 @@
 """
-Kavach — Application Configuration
+SafeTerra — Application Configuration
 
 Loads settings from environment variables / .env file.
 All secrets and connection strings are configurable, never hard-coded.
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     )
 
     # ── Application ─────────────────────────────────────────
-    APP_NAME: str = "Kavach"
+    APP_NAME: str = "SafeTerra"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
 
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/sih"
 
     # ── Security ────────────────────────────────────────────
-    SECRET_KEY: str = "kavach-dev-secret-key-change-in-production-2026"
+    SECRET_KEY: str = "safeterra-dev-secret-key-change-in-production-2026"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -51,12 +51,12 @@ class Settings(BaseSettings):
             return ["http://localhost:5173"]
 
     # ── Demo Credentials (for seeding only) ─────────────────
-    DEMO_ADMIN_EMAIL: str = "admin@kavach.gov.in"
-    DEMO_ADMIN_PASSWORD: str = "KavachAdmin@2026"
-    DEMO_SDMA_EMAIL: str = "sdma.uttarakhand@kavach.gov.in"
-    DEMO_SDMA_PASSWORD: str = "KavachSDMA@2026"
-    DEMO_DDMO_EMAIL: str = "ddmo.dehradun@kavach.gov.in"
-    DEMO_DDMO_PASSWORD: str = "KavachDDMO@2026"
+    DEMO_ADMIN_EMAIL: str = "admin@safeterra.gov.in"
+    DEMO_ADMIN_PASSWORD: str = "SafeAdmin@2026"
+    DEMO_SDMA_EMAIL: str = "sdma.uttarakhand@safeterra.gov.in"
+    DEMO_SDMA_PASSWORD: str = "SafeSDMA@2026"
+    DEMO_DDMO_EMAIL: str = "ddmo.dehradun@safeterra.gov.in"
+    DEMO_DDMO_PASSWORD: str = "SafeDDMO@2026"
 
 
 settings = Settings()

@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useRef } from 'react'
 import { Check, Download, FileText, Printer, Shield, X } from 'lucide-react'
@@ -230,7 +230,7 @@ export function EvacuationOrderModal({
           {/* Legal Mandate Context */}
           <div style={{ fontSize: '12px', textAlign: 'justify', marginBottom: '18px' }}>
             <p style={{ margin: '0 0 10px' }}>
-              <strong>WHEREAS</strong>, real-time satellite telemetry (Copernicus Sentinel-2, Sentinel-1 C-SAR) and IMD Doppler Precipitation Radar data integrated into the <em>KAVACH Decision Support System</em> indicate imminent multi-hazard saturation, slope instability (&gt;32° gradient), and cloudburst surge conditions across critical habitations in {districtName} District;
+              <strong>WHEREAS</strong>, real-time satellite telemetry (Copernicus Sentinel-2, Sentinel-1 C-SAR) and IMD Doppler Precipitation Radar data integrated into the <em>SafeTerra Decision Support System</em> indicate imminent multi-hazard saturation, slope instability (&gt;32° gradient), and cloudburst surge conditions across critical habitations in {districtName} District;
             </p>
             <p style={{ margin: 0 }}>
               <strong>NOW, THEREFORE</strong>, in exercise of powers conferred under <strong>Section 30 and Section 34(a)(b)(c) of the Disaster Management Act, 2005</strong>, the undersigned hereby directs the immediate execution of this Evacuation Order. All listed habitations are to be decanted and transported along designated transit corridors directly into the carrying-capacity verified shelters set forth below:

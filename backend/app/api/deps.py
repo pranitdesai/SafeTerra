@@ -1,5 +1,5 @@
-"""
-Kavach — API Dependencies
+﻿"""
+SafeTerra — API Dependencies
 
 Shared FastAPI dependencies for authentication, authorization, and DB access.
 """

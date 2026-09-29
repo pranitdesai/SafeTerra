@@ -1,5 +1,5 @@
-"""
-Kavach — Hazard Database Model
+﻿"""
+SafeTerra — Hazard Database Model
 
 Represents different hazards (flood, landslide, etc.) with PostGIS geometry.
 """

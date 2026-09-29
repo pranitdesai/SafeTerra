@@ -1,5 +1,5 @@
-"""
-Kavach — SQLAlchemy Declarative Base
+﻿"""
+SafeTerra — SQLAlchemy Declarative Base
 
 Provides a common base class with auto-generated id, created_at, updated_at.
 """
@@ -13,7 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    """Base class for all Kavach database models."""
+    """Base class for all SafeTerra database models."""
     pass
 
 

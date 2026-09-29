@@ -1,5 +1,5 @@
-"""
-Kavach — Analytics, AI Hazard Evaluation, and Real-Time Alert API
+﻿"""
+SafeTerra — Analytics, AI Hazard Evaluation, and Real-Time Alert API
 
 Provides endpoints for:
   - Multi-hazard AI assessment & Sentinel-2 telemetry
@@ -93,7 +93,7 @@ async def get_ml_assessment(
     Returns AI model telemetry, Sentinel-2 satellite metadata, and feature weights.
     """
     return {
-        "model_name": "Kavach Multi-Hazard Geospatial Risk Model v2.4",
+        "model_name": "SafeTerra Multi-Hazard Geospatial Risk Model v2.4",
         "satellite_telemetry": {
             "source": "Copernicus Sentinel-2 (MSI) & Sentinel-1 (C-SAR)",
             "dem_source": "Bhuvan / ALOS PALSAR 12.5m DEM",
@@ -269,6 +269,13 @@ async def simulate_hazard(
 
         # Clear simulated alerts from transient queue
         LIVE_ALERTS[:] = [a for a in LIVE_ALERTS if not str(a.get("id", "")).startswith("alt-sim-")]
+
+        # Reset NDRF alerts to baseline
+        try:
+            from app.api.v1.ndrf import reset_ndrf_alerts
+            reset_ndrf_alerts()
+        except Exception:
+            pass
 
         await db.commit()
         return {

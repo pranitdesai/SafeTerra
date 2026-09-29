@@ -1,5 +1,5 @@
-"""
-Kavach — Async SQLAlchemy Database Session
+﻿"""
+SafeTerra — Async SQLAlchemy Database Session
 
 Provides async engine + session factory for PostgreSQL/PostGIS.
 """

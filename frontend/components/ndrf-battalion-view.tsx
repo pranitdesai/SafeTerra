@@ -119,10 +119,17 @@ export function NDRFBattalionView({
     .reduce((sum, a) => sum + (a.threatened_population || 0), 0)
   const onSceneCount = alerts.filter(a => a.status === 'ON_SCENE_ACTIVE').length
 
+  const getBattalionOfficer = (battalionId: string) => {
+    if (battalionId?.includes('14')) return 'Commandant Rajesh Sharma (14th BN NDRF)'
+    if (battalionId?.includes('15')) return 'Commandant S. N. Yadav (15th BN NDRF)'
+    return 'Commandant P. K. Srivastava (8th BN NDRF)'
+  }
+
   const handleAdvanceStatus = async (
     dispatchId: string,
     nextStatus: NDRFAlertRecord['status'],
     message: string,
+    officer?: string,
     eta?: number
   ) => {
     try {
@@ -133,7 +140,7 @@ export function NDRFBattalionView({
         body: JSON.stringify({
           status: nextStatus,
           message: message,
-          officer_name: 'Commandant P. K. Srivastava (8th BN NDRF)',
+          officer_name: officer || 'Duty Officer, NDRF Operations Room',
           eta_minutes: eta ?? 15,
         })
       })
@@ -556,7 +563,8 @@ export function NDRFBattalionView({
                         onClick={() => handleAdvanceStatus(
                           alert.dispatch_id,
                           'ACKNOWLEDGED',
-                          'NDRF 8th BN Operations Room logged tactical dispatch. Duty officer alerted Commandant.'
+                          `NDRF ${alert.battalion_name} Operations Room logged tactical dispatch. Duty officer alerted Commandant.`,
+                          getBattalionOfficer(alert.battalion_id)
                         )}
                         style={{
                           padding: '7px 16px',
@@ -580,7 +588,8 @@ export function NDRFBattalionView({
                         onClick={() => handleAdvanceStatus(
                           alert.dispatch_id,
                           'MOBILIZING',
-                          '3 QRF Teams mustering at RRC Dehradun with 4 Zodiac boats and search canines.'
+                          `QRF Teams mustering at ${alert.battalion_name} base with specialized rescue equipment and search squads.`,
+                          getBattalionOfficer(alert.battalion_id)
                         )}
                         style={{
                           padding: '7px 16px',
@@ -604,7 +613,8 @@ export function NDRFBattalionView({
                         onClick={() => handleAdvanceStatus(
                           alert.dispatch_id,
                           'EN_ROUTE',
-                          'Convoys rolled out from RRC Dehradun via Thano bypass. GPS Tracking ETA 18 minutes.',
+                          `Convoys rolled out from base towards ${alert.assigned_shelter_name} and ${alert.settlement_names[0] || 'sector'} axis. GPS Tracking active.`,
+                          getBattalionOfficer(alert.battalion_id),
                           18
                         )}
                         style={{
@@ -629,7 +639,8 @@ export function NDRFBattalionView({
                         onClick={() => handleAdvanceStatus(
                           alert.dispatch_id,
                           'ON_SCENE_ACTIVE',
-                          'Forward staging post established at Raipur. Inflatable boats deployed in lower Song basin.'
+                          `Forward staging post established at ${alert.assigned_shelter_name}. Tactical rescue teams deployed on scene at ${alert.settlement_names.join(', ')}.`,
+                          getBattalionOfficer(alert.battalion_id)
                         )}
                         style={{
                           padding: '7px 16px',
@@ -653,7 +664,8 @@ export function NDRFBattalionView({
                         onClick={() => handleAdvanceStatus(
                           alert.dispatch_id,
                           'COMPLETED',
-                          'All high-risk evacuees safely decanted into Raipur Staging Camp. Sector stabilized.'
+                          `All high-risk evacuees safely secured into ${alert.assigned_shelter_name}. Sector stabilized.`,
+                          getBattalionOfficer(alert.battalion_id)
                         )}
                         style={{
                           padding: '7px 16px',

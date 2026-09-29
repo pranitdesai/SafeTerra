@@ -1,5 +1,5 @@
-"""
-Kavach — Structured Logging Configuration
+﻿"""
+SafeTerra — Structured Logging Configuration
 """
 
 from __future__ import annotations

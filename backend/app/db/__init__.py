@@ -1,1 +1,1 @@
-"""Kavach — Database package."""
+﻿"""SafeTerra — Database package."""

@@ -1,5 +1,5 @@
-"""
-Kavach — Security Utilities
+﻿"""
+SafeTerra — Security Utilities
 
 JWT token creation / verification and password hashing.
 Uses bcrypt directly for password hashing (passlib has compatibility issues

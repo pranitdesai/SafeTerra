@@ -1,5 +1,5 @@
-"""
-Kavach — Intelligent Carrying Capacity Relocation Optimizer
+﻿"""
+SafeTerra — Intelligent Carrying Capacity Relocation Optimizer
 
 Solves the multi-objective capacitated relocation problem:
 Matches habitations in hazard Red/Buffer zones needing relocation to the nearest

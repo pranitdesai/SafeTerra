@@ -1,5 +1,5 @@
-"""
-Kavach — Administrative Hierarchy Models
+﻿"""
+SafeTerra — Administrative Hierarchy Models
 
 State → District → Block → Tehsil
 All support PostGIS geometry for spatial queries.

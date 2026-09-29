@@ -1,1 +1,1 @@
-"""Kavach — V1 API package."""
+﻿"""SafeTerra — V1 API package."""

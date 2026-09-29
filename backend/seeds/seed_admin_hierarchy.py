@@ -1,5 +1,5 @@
-"""
-Kavach — Seed Administrative Hierarchy
+﻿"""
+SafeTerra — Seed Administrative Hierarchy
 
 Seeds: Uttarakhand → Dehradun District → Blocks → Tehsils
 Uses real administrative data with approximate boundary geometry.

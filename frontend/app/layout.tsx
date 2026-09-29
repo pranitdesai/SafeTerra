@@ -4,9 +4,9 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Kavach | Disaster Decision Support',
+  title: 'SafeTerra | Disaster Decision Support',
   description: 'Government disaster decision support and hazard monitoring portal.',
-  generator: 'Kavach Portal',
+  generator: 'SafeTerra Portal',
 }
 
 export const viewport: Viewport = {

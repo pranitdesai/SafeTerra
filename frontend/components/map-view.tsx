@@ -28,7 +28,7 @@ const MapCanvas = dynamic(() => import('./map-view-client').then(module => modul
   )
 })
 
-export function KavachMap({
+export function SafeTerraMap({
   points,
   routes = [],
   showRoutes = false,

@@ -1,5 +1,5 @@
-"""
-Kavach — Relocation Site Database Model
+﻿"""
+SafeTerra — Relocation Site Database Model
 
 Represents candidate safe relocation sites and their carrying capacities.
 """

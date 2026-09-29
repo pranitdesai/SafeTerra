@@ -1,5 +1,5 @@
-"""
-Kavach — Authentication Schemas
+﻿"""
+SafeTerra — Authentication Schemas
 
 Request/response models for the auth API.
 """

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -22,8 +22,8 @@ type PortalRole = 'ADMIN' | 'SDMA' | 'DISTRICT';
 
 export default function LoginPage() {
   const [role, setRole] = useState<PortalRole>('ADMIN');
-  const [email, setEmail] = useState('admin@kavach.gov.in');
-  const [password, setPassword] = useState('KavachAdmin@2026');
+  const [email, setEmail] = useState('admin@safeterra.gov.in');
+  const [password, setPassword] = useState('SafeAdmin@2026');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,14 +34,14 @@ export default function LoginPage() {
     setRole(newRole);
     setError('');
     if (newRole === 'ADMIN') {
-      setEmail('admin@kavach.gov.in');
-      setPassword('KavachAdmin@2026');
+      setEmail('admin@safeterra.gov.in');
+      setPassword('SafeAdmin@2026');
     } else if (newRole === 'SDMA') {
-      setEmail('sdma.uttarakhand@kavach.gov.in');
-      setPassword('KavachSDMA@2026');
+      setEmail('sdma.uttarakhand@safeterra.gov.in');
+      setPassword('SafeSDMA@2026');
     } else {
-      setEmail('ddmo.dehradun@kavach.gov.in');
-      setPassword('KavachDDMO@2026');
+      setEmail('ddmo.dehradun@safeterra.gov.in');
+      setPassword('SafeDDMO@2026');
     }
   };
 
@@ -259,7 +259,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-9 pr-3.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 text-gray-900 transition-all placeholder:text-gray-400"
-                    placeholder={role === 'ADMIN' ? 'admin@kavach.gov.in' : 'ddmo.dehradun@kavach.gov.in'}
+                    placeholder={role === 'ADMIN' ? 'admin@safeterra.gov.in' : 'ddmo.dehradun@safeterra.gov.in'}
                   />
                 </div>
               </div>
@@ -301,11 +301,11 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     if (role === 'ADMIN') {
-                      setEmail('admin@kavach.gov.in');
-                      setPassword('KavachAdmin@2026');
+                      setEmail('admin@safeterra.gov.in');
+                      setPassword('SafeAdmin@2026');
                     } else {
-                      setEmail('ddmo.dehradun@kavach.gov.in');
-                      setPassword('KavachDDMO@2026');
+                      setEmail('ddmo.dehradun@safeterra.gov.in');
+                      setPassword('SafeDDMO@2026');
                     }
                   }}
                   className="text-blue-700 hover:text-blue-900 font-medium hover:underline inline-flex items-center gap-1 text-[11px]"
@@ -352,7 +352,7 @@ export default function LoginPage() {
             राष्ट्रीय आपदा प्रबंधन प्राधिकरण (NDMA) • गृह मंत्रालय, भारत सरकार
           </div>
           <div className="text-[11px] text-gray-400">
-            Kavach Integrated Disaster Decision Support System • Smart India Hackathon
+            SafeTerra Integrated Disaster Decision Support System • Smart India Hackathon
           </div>
         </div>
       </footer>

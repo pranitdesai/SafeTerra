@@ -1,1 +1,1 @@
-"""Kavach — Application package."""
+﻿"""SafeTerra — Application package."""

@@ -1,1 +1,1 @@
-"""Kavach — Seeds package."""
+﻿"""SafeTerra — Seeds package."""

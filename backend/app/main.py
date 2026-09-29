@@ -123,7 +123,7 @@ app.include_router(ndrf_router, prefix="/api")
 
 # ── Health Check ────────────────────────────────────────────
 
-@app.get("/api/health", tags=["System"])
+@app.api_route("/api/health", methods=["GET", "HEAD"], tags=["System"])
 async def health_check():
     """Health check endpoint with DB connectivity verification."""
     db_status = "ok"

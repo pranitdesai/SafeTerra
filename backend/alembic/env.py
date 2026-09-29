@@ -25,7 +25,7 @@ import app.models  # noqa: E402, F401
 # ── Alembic Config ──────────────────────────────────────────
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL_SYNC)
+config.set_main_option("sqlalchemy.url", settings.sync_database_url)
 
 target_metadata = Base.metadata
 

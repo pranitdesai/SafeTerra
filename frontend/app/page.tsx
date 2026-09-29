@@ -223,8 +223,8 @@ function Header({
               sidebarMode === 'hidden'
                 ? "Show Operations Console"
                 : sidebarMode === 'collapsed'
-                ? "Expand Operations Console"
-                : "Shrink Operations Console (Icons only)"
+                  ? "Expand Operations Console"
+                  : "Shrink Operations Console (Icons only)"
             }
             aria-label="Toggle Operations Console"
           >
@@ -392,9 +392,8 @@ function Sidebar({
   return (
     <>
       <aside
-        className={`sidebar ${open ? 'sidebar-open' : ''} ${
-          mode === 'collapsed' ? 'sidebar-collapsed' : ''
-        } ${mode === 'hidden' ? 'sidebar-hidden' : ''}`}
+        className={`sidebar ${open ? 'sidebar-open' : ''} ${mode === 'collapsed' ? 'sidebar-collapsed' : ''
+          } ${mode === 'hidden' ? 'sidebar-hidden' : ''}`}
       >
         <div
           style={{
@@ -1479,7 +1478,7 @@ function DataPage({
               </thead>
               <tbody>
                 {safeUsers
-                  .filter(r => 
+                  .filter(r =>
                     (r.full_name || '').toLowerCase().includes(q.toLowerCase()) ||
                     (r.email || '').toLowerCase().includes(q.toLowerCase()) ||
                     (r.assigned_district_name || '').toLowerCase().includes(q.toLowerCase())
@@ -1553,9 +1552,9 @@ function DataPage({
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Create login credentials & assign district jurisdiction</p>
                 </div>
               </div>
-              <button 
+              <button
                 type="button"
-                onClick={() => setShowAddModal(false)} 
+                onClick={() => setShowAddModal(false)}
                 style={{ border: 0, background: 'transparent', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
               >
                 <X size={20} />
@@ -1787,8 +1786,8 @@ export default function Home() {
   }
 
   const handleOpenNDRFModal = (targetList?: Settlement[]) => {
-    const list = targetList && targetList.length > 0 
-      ? targetList 
+    const list = targetList && targetList.length > 0
+      ? targetList
       : settlements.filter(s => s.current_hazard_status === 'RED')
     setNdrfTargetSettlements(list.length > 0 ? list : settlements.slice(0, 1))
     setShowNDRFModal(true)

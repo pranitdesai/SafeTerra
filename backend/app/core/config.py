@@ -33,6 +33,26 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/sih"
     DATABASE_URL_SYNC: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/sih"
 
+    @property
+    def async_database_url(self) -> str:
+        """Ensure connection string uses the asyncpg driver."""
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
+    @property
+    def sync_database_url(self) -> str:
+        """Ensure connection string uses psycopg2 for sync/migrations."""
+        url = self.DATABASE_URL_SYNC or self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql://") and not url.startswith("postgresql+psycopg2://"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        return url
+
     # ── Security ────────────────────────────────────────────
     SECRET_KEY: str = "safeterra-dev-secret-key-change-in-production-2026"
     ALGORITHM: str = "HS256"
@@ -40,15 +60,17 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # ── CORS ────────────────────────────────────────────────
-    CORS_ORIGINS: str = '["http://localhost:5173","http://localhost:3000"]'
+    CORS_ORIGINS: str = '["*"]'
 
     @property
     def cors_origins_list(self) -> List[str]:
-        """Parse CORS_ORIGINS JSON string into a list."""
+        """Parse CORS_ORIGINS JSON string or comma-separated list into a list."""
+        if self.CORS_ORIGINS == "*":
+            return ["*"]
         try:
             return json.loads(self.CORS_ORIGINS)
         except (json.JSONDecodeError, TypeError):
-            return ["http://localhost:5173"]
+            return [x.strip() for x in self.CORS_ORIGINS.split(",") if x.strip()] or ["*"]
 
     # ── Demo Credentials (for seeding only) ─────────────────
     DEMO_ADMIN_EMAIL: str = "admin@safeterra.gov.in"

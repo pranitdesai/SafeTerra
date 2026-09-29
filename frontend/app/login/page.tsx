@@ -130,7 +130,7 @@ export default function LoginPage() {
             <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
               <ShieldCheck className="w-4 h-4 text-blue-800" />
               <span className="text-xs font-bold text-blue-900 tracking-wider">
-                KAVACH — DECISION SUPPORT SYSTEM
+                SafeTerra — DECISION SUPPORT SYSTEM
               </span>
             </div>
           </div>
@@ -202,8 +202,8 @@ export default function LoginPage() {
             <div className={`mb-5 p-3 rounded-lg border text-xs flex items-start gap-2.5 ${role === 'ADMIN'
               ? 'bg-amber-50/70 border-amber-200 text-amber-900'
               : role === 'SDMA'
-              ? 'bg-blue-50/70 border-blue-200 text-blue-900'
-              : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                ? 'bg-blue-50/70 border-blue-200 text-blue-900'
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
               }`}>
               {role === 'ADMIN' ? (
                 <>
@@ -243,11 +243,11 @@ export default function LoginPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                  {role === 'ADMIN' 
-                    ? 'National Administrator Email / Gov ID' 
+                  {role === 'ADMIN'
+                    ? 'National Administrator Email / Gov ID'
                     : role === 'SDMA'
-                    ? 'Uttarakhand State (USDMA / SEOC) Email / Gov ID'
-                    : 'District Officer (DDMO Dehradun) Email / Gov ID'}
+                      ? 'Uttarakhand State (USDMA / SEOC) Email / Gov ID'
+                      : 'District Officer (DDMO Dehradun) Email / Gov ID'}
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">

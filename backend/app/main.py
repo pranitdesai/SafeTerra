@@ -36,6 +36,39 @@ async def lifespan(app: FastAPI):
         version=settings.APP_VERSION,
         debug=settings.DEBUG,
     )
+
+    # Automatically create tables and seed demo data if DB is fresh
+    try:
+        from sqlalchemy import text, select
+        from app.db.base import Base
+        import app.models  # noqa: F401
+        from app.db.session import engine, async_session_factory
+        from app.models.user import User
+
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("database_tables_ready")
+
+        async with async_session_factory() as session:
+            has_user = (await session.execute(select(User.id).limit(1))).scalar()
+            if not has_user:
+                logger.info("seeding_initial_demo_data")
+                from seeds.seed_admin_hierarchy import seed_admin_hierarchy
+                from seeds.seed_users import seed_users
+                from seeds.seed_demo_data import seed_demo_data
+                from seeds.seed_ndrf import seed_ndrf_battalions, seed_ndrf_default_alert
+
+                await seed_admin_hierarchy(session)
+                await seed_users(session)
+                await seed_demo_data(session)
+                battalions = await seed_ndrf_battalions(session)
+                await seed_ndrf_default_alert(session, battalions)
+                await session.commit()
+                logger.info("demo_data_seeded_successfully")
+    except Exception as exc:
+        logger.warning("database_auto_init_notice", detail=str(exc))
+
     yield
     logger.info("safeterra_shutdown")
 

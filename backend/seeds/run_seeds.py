@@ -28,7 +28,7 @@ async def run_all_seeds():
     setup_logging(debug=True)
     logger.info("seed_start", database=settings.DATABASE_URL)
 
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    engine = create_async_engine(settings.async_database_url, echo=False)
     session_factory = async_sessionmaker(
         bind=engine, class_=AsyncSession, expire_on_commit=False
     )

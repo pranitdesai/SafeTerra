@@ -125,9 +125,58 @@ app.include_router(ndrf_router, prefix="/api")
 
 @app.get("/api/health", tags=["System"])
 async def health_check():
-    """Basic health check endpoint."""
+    """Health check endpoint with DB connectivity verification."""
+    db_status = "ok"
+    db_error = None
+    try:
+        from app.db.session import engine
+        from sqlalchemy import text
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        db_status = "error"
+        db_error = str(exc)
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "ok" else "degraded",
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "database": db_status,
+        "db_error": db_error,
     }
+
+
+@app.get("/api/init-database", tags=["System"])
+async def init_database():
+    """Explicitly initialize schema and seed demo data."""
+    try:
+        from sqlalchemy import text, select
+        from app.db.base import Base
+        import app.models  # noqa: F401
+        from app.db.session import engine, async_session_factory
+        from app.models.user import User
+
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+            await conn.run_sync(Base.metadata.create_all)
+
+        seeded = False
+        async with async_session_factory() as session:
+            has_user = (await session.execute(select(User.id).limit(1))).scalar()
+            if not has_user:
+                from seeds.seed_admin_hierarchy import seed_admin_hierarchy
+                from seeds.seed_users import seed_users
+                from seeds.seed_demo_data import seed_demo_data
+                from seeds.seed_ndrf import seed_ndrf_battalions, seed_ndrf_default_alert
+
+                await seed_admin_hierarchy(session)
+                await seed_users(session)
+                await seed_demo_data(session)
+                battalions = await seed_ndrf_battalions(session)
+                await seed_ndrf_default_alert(session, battalions)
+                await session.commit()
+                seeded = True
+
+        return {"status": "ok", "tables": "initialized", "seeded": seeded}
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
